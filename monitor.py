@@ -27,16 +27,46 @@ def enviar_telegram(mensaje):
 def obtener_estado_olts():
     olts = {}
     with sync_playwright() as p:
+        # headless=True para GitHub Actions. Si pruebas en local puedes poner False para ver el navegador
         browser = p.chromium.launch(headless=True)
         page = browser.new_page()
         
         print("Iniciando sesión...")
         page.goto(URL_ADMIN)
-        page.fill("input[name='username']", USER_ADMIN)
-        page.fill("input[name='password']", PASS_ADMIN)
-        page.click("button[type='submit']")
         
-        # Esperar a que la página se estabilice
+        # --- SOLUCIÓN AL ERROR DE TIMEOUT ---
+        try:
+            # Espera explícita a que el campo de usuario aparezca en el DOM
+            print("Esperando que el campo de usuario cargue...")
+            page.wait_for_selector("input[name='username']", timeout=15000)
+            page.fill("input[name='username']", USER_ADMIN)
+            
+            print("Esperando campo de contraseña...")
+            page.wait_for_selector("input[name='password']", timeout=10000)
+            page.fill("input[name='password']", PASS_ADMIN)
+            
+            print("Haciendo clic en el botón de login...")
+            page.wait_for_selector("button[type='submit']", timeout=10000)
+            page.click("button[type='submit']")
+            
+        except Exception as e:
+            # --- DIAGNÓSTICO AVANZADO SI FALLA EL LOGIN ---
+            print(f"❌ ERROR CRÍTICO EN EL LOGIN: {e}")
+            print(f"URL actual en el error: {page.url}")
+            
+            # Guarda los primeros caracteres del HTML para depurar si hay redirecciones o banners
+            html_preview = page.content()[:500]
+            print(f"Vista previa del HTML: {html_preview}")
+            
+            # Toma una captura de pantalla. En GitHub Actions aparecerá en "Artifacts"
+            page.screenshot(path="error_login.png")
+            print("Se ha guardado 'error_login.png'. Revísalo en los Artifacts de GitHub Actions.")
+            
+            # Relanzamos el error para que el script falle y nos avise en el log de GitHub
+            raise e
+        # ---------------------------------------------
+
+        # Esperar a que la página se estabilice después del login
         page.wait_for_load_state('networkidle')
         
         print("Navegando a la tabla de OLTs...")

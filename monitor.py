@@ -26,7 +26,7 @@ def enviar_telegram(mensaje):
                 print(f"DIAGNÓSTICO TELEGRAM -> Error al conectar: {e}")
 
 def obtener_estado_olts():
-    olts = {}
+    olts = {} # Guardará los datos usando la IP como clave única
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True)
         page = browser.new_page()
@@ -35,7 +35,7 @@ def obtener_estado_olts():
         page.goto(URL_ADMIN, wait_until="networkidle", timeout=60000)
         
         try:
-            print("Esperando a que la página y los scripts de analítica carguen...")
+            print("Esperando a que la página cargue...")
             page.wait_for_timeout(3000)
             
             print("Esperando el campo de 'Usuario o Email'...")
@@ -50,9 +50,7 @@ def obtener_estado_olts():
             
         except Exception as e:
             print(f"❌ ERROR CRÍTICO EN EL LOGIN: {e}")
-            print(f"URL actual en el error: {page.url}")
             page.screenshot(path="error_login.png")
-            print("Se ha guardado 'error_login.png'. Revísalo en los Artifacts.")
             raise e 
 
         page.wait_for_load_state('networkidle')
@@ -74,53 +72,23 @@ def obtener_estado_olts():
         
         for i, fila in enumerate(filas):
             columnas = fila.query_selector_all("td")
-            if len(columnas) > 0:
-                textos_columnas = [col.inner_text().strip() for col in columnas]
-                print(f"Fila {i} detectada en crudo: {textos_columnas}")
+            if len(columnas) >= 6: # La tabla tiene 6 columnas visibles
+                modelo_olt = columnas[1].inner_text().strip()  # Columna "OLT"
+                zona_olt = columnas[2].inner_text().strip()    # Columna "Nombre"
+                ip_olt = columnas[3].inner_text().strip()      # Columna "Host" (La usaremos como ID único)
+                estado_olt = columnas[4].inner_text().strip().lower() # Columna "Estado" (Online/Offline)
                 
-                if len(columnas) >= 2:
-                    nombre_olt = columnas[2].inner_text().strip()
+                if modelo_olt != "" and (estado_olt == "online" or estado_olt == "offline"):
+                    # Usamos la IP como clave para no confundir modelos duplicados
+                    clave_olt = ip_olt
+                    nombre_amigable = f"{modelo_olt} ({zona_olt})"
                     
-                    # 1. Si la OLT ya la guardamos (porque se repite con los puertos), la saltamos
-                    if nombre_olt in olts:
-                        continue
-                    
-                    # 2. Intentar detectar el estado real (Online o Offline)
-                    estado_olt = "Online" # Valor por defecto para que no falle nunca
-                    
-                    # A. Buscar en el texto de todas las columnas
-                    for col in columnas:
-                        texto_columna = col.inner_text().strip().lower()
-                        if "online" in texto_columna:
-                            estado_olt = "Online"
-                            break
-                        elif "offline" in texto_columna:
-                            estado_olt = "Offline"
-                            break
-                    
-                    # B. Buscar en la clase CSS de la fila (si la pintan de verde/rojo)
-                    clase_fila = fila.get_attribute("class")
-                    if clase_fila:
-                        clase_fila = clase_fila.lower()
-                        if "online" in clase_fila:
-                            estado_olt = "Online"
-                        elif "offline" in clase_fila:
-                            estado_olt = "Offline"
-                    
-                    # C. (Opcional) Buscar en la columna 7 que podría tener el icono
-                    if len(columnas) >= 8:
-                        clase_col7 = columnas[7].get_attribute("class")
-                        if clase_col7:
-                            clase_col7 = clase_col7.lower()
-                            if "online" in clase_col7:
-                                estado_olt = "Online"
-                            elif "offline" in clase_col7:
-                                estado_olt = "Offline"
-
-                    # Guardamos la OLT con el estado detectado (o "Online" por defecto)
-                    if nombre_olt != "":
-                        olts[nombre_olt] = estado_olt
-                        print(f"-> Guardado con éxito: {nombre_olt} está {estado_olt}")
+                    # Guardamos la información en el diccionario
+                    olts[clave_olt] = {
+                        "nombre": nombre_amigable,
+                        "estado": estado_olt
+                    }
+                    print(f"-> OLT guardada: {nombre_amigable} -> IP: {ip_olt} -> Estado: {estado_olt}")
         
         browser.close()
     return olts
@@ -148,23 +116,25 @@ def main():
     else:
         estado_anterior = {}
 
-    # Si es la primera vez que corre con éxito, enviamos el mensaje de bienvenida
+    # Si es la primera vez, enviamos bienvenida
     if not estado_anterior:
         print("Primer ejecución exitosa. Enviando bienvenida a Telegram...")
         mensaje_inicio = "🤖 <b>BOT DE MONITOREO INICIADO</b> 🤖\n\nEl sistema se ha conectado con éxito a tus OLTs y comenzó la vigilancia 24/7."
         enviar_telegram(mensaje_inicio)
 
-    # Comparar estados
-    for olt, estado in estado_actual.items():
-        estado_previo = estado_anterior.get(olt)
+    # Comparar estados actuales con los anteriores
+    for clave_olt, datos in estado_actual.items():
+        # clave_olt es la IP de la OLT
+        estado_previo = estado_anterior.get(clave_olt, {}).get("estado")
+        estado_actual_olt = datos["estado"]
         
-        if estado_previo and estado_previo != estado:
-            if "offline" in estado.lower():
-                enviar_telegram(f"🚨 <b>ALERTA DE CAÍDA</b> 🚨\n\nLa OLT <b>{olt}</b> se ha desconectado.\nEstado actual: <b>{estado}</b>")
-            elif "online" in estado.lower():
-                enviar_telegram(f"✅ <b>OLT RECUPERADA</b> ✅\n\nLa OLT <b>{olt}</b> vuelve a estar en línea.\nEstado actual: <b>{estado}</b>")
+        if estado_previo and estado_previo != estado_actual_olt:
+            if "offline" in estado_actual_olt:
+                enviar_telegram(f"🚨 <b>ALERTA DE CAÍDA</b> 🚨\n\nLa OLT <b>{datos['nombre']}</b> se ha desconectado.\nIP: {clave_olt}\nEstado actual: <b>{estado_actual_olt.upper()}</b>")
+            elif "online" in estado_actual_olt:
+                enviar_telegram(f"✅ <b>OLT RECUPERADA</b> ✅\n\nLa OLT <b>{datos['nombre']}</b> vuelve a estar en línea.\nIP: {clave_olt}\nEstado actual: <b>{estado_actual_olt.upper()}</b>")
 
-    # Guardar estado actual en la memoria
+    # Guardar estado actual en la memoria (sobrescribe el anterior)
     with open(ARCHIVO_ESTADO, "w") as f:
         json.dump(estado_actual, f, indent=4)
     print("Proceso finalizado correctamente.")

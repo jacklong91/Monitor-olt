@@ -28,55 +28,43 @@ def enviar_telegram(mensaje):
 def obtener_estado_olts():
     olts = {}
     with sync_playwright() as p:
-        # headless=True es obligatorio para GitHub Actions
         browser = p.chromium.launch(headless=True)
         page = browser.new_page()
         
         print("Iniciando sesión...")
-        # Cambiamos el "goto" para que espere a que la red esté totalmente inactiva
         page.goto(URL_ADMIN, wait_until="networkidle", timeout=60000)
         
-        # --- CORRECCIÓN PARA CARGAR SCRIPTS LENTOS ---
         try:
-            print("Esperando a que los scripts de analítica terminen de ejecutarse...")
-            page.wait_for_timeout(3000) # Pausa de 3 segundos adicionales para que Google Tag Manager cargue
+            print("Esperando a que la página y los scripts de analítica carguen...")
+            page.wait_for_timeout(3000) # Pequeño margen extra
             
-            print("Esperando que el campo de usuario esté visible (Tiempo de espera: 60 segundos)...")
-            # Aumentamos a 60000ms (60 segundos) porque las máquinas de GitHub son lentas
-            page.wait_for_selector("input[name='username']", timeout=60000)
+            # --- CAMBIO FUNDAMENTAL: Usamos el texto visible en el formulario ---
+            print("Esperando el campo de 'Usuario o Email'...")
+            page.get_by_placeholder("Usuario o Email").wait_for(timeout=60000)
             
             print("Rellenando credenciales...")
-            page.fill("input[name='username']", USER_ADMIN)
-            page.fill("input[name='password']", PASS_ADMIN)
+            page.get_by_placeholder("Usuario o Email").fill(USER_ADMIN)
+            page.get_by_placeholder("Contraseña").fill(PASS_ADMIN)
             
-            print("Haciendo clic en el botón de inicio...")
-            page.click("button[type='submit']")
+            print("Haciendo clic en el botón 'Acceder'...")
+            # Buscamos el botón exacto que aparece en tu imagen
+            page.locator("button:has-text('Acceder')").click()
             
         except Exception as e:
-            # --- DIAGNÓSTICO PARA SABER QUÉ ESTÁ PASANDO ---
             print(f"❌ ERROR CRÍTICO EN EL LOGIN: {e}")
             print(f"URL actual en el error: {page.url}")
-            
-            # Vista previa del HTML
             html_preview = page.content()[:500]
             print(f"Vista previa del HTML: {html_preview}")
-            
-            # Captura de pantalla
             page.screenshot(path="error_login.png")
-            print("Se ha guardado 'error_login.png'. Revísalo en los Artifacts de GitHub Actions.")
-            
-            # Esto es fundamental: RELANZAMOS EL ERROR para que el script falle de verdad
-            raise e
-        # ---------------------------------------------
+            print("Se ha guardado 'error_login.png'. Revísalo en los Artifacts.")
+            raise e 
 
         # Esperar a que la página redirija tras el login y se estabilice
         page.wait_for_load_state('networkidle')
         
         print("Navegando a la tabla de OLTs...")
-        # Si el login fue exitoso, se redirige naturalmente a esta URL.
         page.goto("https://wave.adminolt.com/olt/list/")
         
-        # Espera obligatoria de 10 segundos fijos para que cargue la tabla interna
         print("Esperando 10 segundos fijos para carga de datos...")
         page.wait_for_timeout(10000) 
         
@@ -112,13 +100,12 @@ def main():
         estado_actual = obtener_estado_olts()
         print(f"Resultado final del escaneo: {estado_actual}")
     except Exception as e:
-        # Si falla el login, este bloque capturará el "raise e" y saldrá con error real
         print(f"Error crítico en el navegador: {e}")
-        sys.exit(1) # IMPORTANTE: Esto hace que GitHub Actions marque el workflow como FRACASO (Rojo)
+        sys.exit(1) # Hace que el workflow falle y se vea la X roja en GitHub
 
     if not estado_actual:
         print("❌ ERROR: No se pudo extraer ninguna OLT válida en este intento.")
-        sys.exit(1) # Misma razón: marcar como fallido para que veas la X roja y los artefactos
+        sys.exit(1)
 
     # Cargar memoria anterior
     if os.path.exists(ARCHIVO_ESTADO):

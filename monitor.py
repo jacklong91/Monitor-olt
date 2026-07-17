@@ -3,7 +3,6 @@ import json
 import requests
 from playwright.sync_api import sync_playwright
 
-# Configuraciones desde los "Secrets" de GitHub
 URL_ADMIN = os.environ.get("URL_ADMIN")
 USER_ADMIN = os.environ.get("USER_ADMIN")
 PASS_ADMIN = os.environ.get("PASS_ADMIN")
@@ -27,40 +26,33 @@ def obtener_estado_olts():
         browser = p.chromium.launch(headless=True)
         page = browser.new_page()
         
-        # 1. Iniciar sesión
         print("Iniciando sesión...")
         page.goto(URL_ADMIN)
         page.fill("input[name='username']", USER_ADMIN)
         page.fill("input[name='password']", PASS_ADMIN)
         page.click("button[type='submit']")
-        
-        # Esperar a que pase el login
         page.wait_for_load_state('networkidle')
         
-        # 2. Ir directamente a la lista de OLTs
         print("Navegando a la tabla de OLTs...")
         page.goto("https://wave.adminolt.com/olt/list/")
-        
-        # 3. Espera fija y obligatoria de 10 segundos
-        print("Esperando 10 segundos fijos para que todo el sistema cargue...")
         page.wait_for_timeout(10000) 
         
-        # 4. Verificación de seguridad (Saber dónde está parado el robot)
-        print(f"La URL actual donde está leyendo el robot es: {page.url}")
-        
-        # 5. Extraer los datos de forma más flexible
-        print("Leyendo filas...")
-        filas = page.query_selector_all("tr") # Busca cualquier fila sin ser estricto
+        print("Leyendo datos finales...")
+        filas = page.query_selector_all("tr")
         
         for fila in filas:
             columnas = fila.query_selector_all("td")
             
-            if len(columnas) >= 6:
+            # Verificamos que tenga suficientes columnas para llegar a la 6
+            if len(columnas) >= 7:
                 nombre_olt = columnas[2].inner_text().strip()
-                estado_olt = columnas[5].inner_text().strip()
+                # ¡LAS COORDENADAS CORRECTAS!
+                estado_olt = columnas[6].inner_text().strip()
                 
-                if nombre_olt:
+                # Guardamos solo si tiene un nombre y el estado dice Online u Offline
+                if nombre_olt != "" and ("Online" in estado_olt or "Offline" in estado_olt):
                     olts[nombre_olt] = estado_olt
+                    print(f"Equipo guardado en memoria: {nombre_olt} -> {estado_olt}")
         
         browser.close()
     return olts
@@ -69,16 +61,15 @@ def main():
     print("Iniciando escaneo...")
     try:
         estado_actual = obtener_estado_olts()
-        print(f"OLTs encontradas: {estado_actual}")
+        print(f"Total de OLTs listas para monitorear: {estado_actual}")
     except Exception as e:
         print(f"Error en el navegador: {e}")
         return
 
     if not estado_actual:
-        print("No se encontraron OLTs. Revisa arriba si el robot se quedó atascado en el Login.")
+        print("No se encontraron OLTs válidas.")
         return
 
-    # Leer la memoria del robot
     if os.path.exists(ARCHIVO_ESTADO):
         with open(ARCHIVO_ESTADO, "r") as f:
             try:
@@ -88,19 +79,21 @@ def main():
     else:
         estado_anterior = {}
 
-    # Comparar estados y enviar alertas
+    # Mensaje de bienvenida la primera vez que lee las OLTs con éxito
+    if not estado_anterior:
+        mensaje_inicio = "🤖 <b>BOT DE MONITOREO INICIADO</b> 🤖\n\nEl sistema ha registrado tus equipos exitosamente y ya está vigilando 24/7."
+        enviar_telegram(mensaje_inicio)
+
     for olt, estado in estado_actual.items():
         estado_previo = estado_anterior.get(olt)
         
+        # Comparamos si el estado cambió para enviar la alerta
         if estado_previo and estado_previo != estado:
             if "Offline" in estado or "offline" in estado.lower():
-                mensaje = f"🚨 <b>ALERTA DE CAÍDA</b> 🚨\n\nLa OLT <b>{olt}</b> se ha desconectado.\nEstado actual: <b>{estado}</b>"
-                enviar_telegram(mensaje)
+                enviar_telegram(f"🚨 <b>ALERTA DE CAÍDA</b> 🚨\n\nLa OLT <b>{olt}</b> se ha desconectado.\nEstado actual: <b>{estado}</b>")
             elif "Online" in estado or "online" in estado.lower():
-                mensaje = f"✅ <b>OLT RECUPERADA</b> ✅\n\nLa OLT <b>{olt}</b> vuelve a estar en línea.\nEstado actual: <b>{estado}</b>"
-                enviar_telegram(mensaje)
+                enviar_telegram(f"✅ <b>OLT RECUPERADA</b> ✅\n\nLa OLT <b>{olt}</b> vuelve a estar en línea.\nEstado actual: <b>{estado}</b>")
 
-    # Guardar la nueva memoria
     with open(ARCHIVO_ESTADO, "w") as f:
         json.dump(estado_actual, f, indent=4)
     print("Proceso finalizado correctamente.")

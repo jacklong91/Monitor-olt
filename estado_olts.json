@@ -1,17 +1,26 @@
 {
-    "OLT3-N4BDR-ZONA3": "Online",
-    "OLT4-Z2-VENETUR": "Online",
-    "OLT6-ZONA1": "Online",
-    "OLT1-N5BDPZ-ZONA3": "Online",
-    "OLT2-N5BDPZ-ZONA3": "Online",
-    "OLT1-R3-ZONA1": "Online",
-    "OLT1-R1-CGNAT1-CRPN": "Offline",
-    "OLT2-R1-CGNAT1-CRPN": "Offline",
-    "OLT2-R3-ZONA1": "Online",
-    "OLT2-Z2-ATAMO": "Online",
-    "OLT1-R2-CGNAT1-CRPN": "Offline",
-    "OLT5-N4BDR-ZONA3": "Online",
-    "OLT2-R2-ZONA1-MGTA": "Online",
-    "OLT1-N9-R1-ZONA3-MGTA": "Online",
-    "OLT4-N4BDR-ZONA3": "Online"
+    "190.8.165.234": {
+        "nombre": "Vsol-V1600G2\nVsol (OLT4-N4BDR-ZONA3)",
+        "estado": "online"
+    },
+    "190.8.165.227": {
+        "nombre": "Vsol-V1600G2\nVsol (OLT2-Z2-ATAMO)",
+        "estado": "online"
+    },
+    "190.8.165.225": {
+        "nombre": "Vsol-V1600G2\nVsol (OLT2-R2-ZONA1-MGTA)",
+        "estado": "online"
+    },
+    "190.8.165.226": {
+        "nombre": "Vsol-V1600G2\nVsol (OLT2-R3-ZONA1)",
+        "estado": "online"
+    },
+    "190.8.164.246": {
+        "nombre": "Vsol-V1600G2\nVsol (OLT1-R2-CGNAT1-CRPN)",
+        "estado": "offline"
+    },
+    "190.8.165.228": {
+        "nombre": "Vsol-V1600G1\nVsol (OLT1-N9-R1-ZONA3-MGTA)",
+        "estado": "online"
+    }
 }

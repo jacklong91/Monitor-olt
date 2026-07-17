@@ -18,7 +18,11 @@ def enviar_telegram(mensaje):
         if chat_id_limpio:
             url = f"https://api.telegram.org/bot{TG_TOKEN}/sendMessage"
             payload = {"chat_id": chat_id_limpio, "text": mensaje, "parse_mode": "HTML"}
-            requests.post(url, json=payload)
+            try:
+                r = requests.post(url, json=payload)
+                print(f"DIAGNÓSTICO TELEGRAM -> Servidor respondió: {r.status_code} - {r.text}")
+            except Exception as e:
+                print(f"DIAGNÓSTICO TELEGRAM -> Error al conectar: {e}")
 
 def obtener_estado_olts():
     olts = {}
@@ -31,28 +35,42 @@ def obtener_estado_olts():
         page.fill("input[name='username']", USER_ADMIN)
         page.fill("input[name='password']", PASS_ADMIN)
         page.click("button[type='submit']")
+        
+        # Esperar a que la página se estabilice
         page.wait_for_load_state('networkidle')
         
         print("Navegando a la tabla de OLTs...")
         page.goto("https://wave.adminolt.com/olt/list/")
+        
+        # Espera obligatoria de 10 segundos para que cargue la tabla interna
+        print("Esperando 10 segundos fijos para carga de datos...")
         page.wait_for_timeout(10000) 
         
-        print("Leyendo datos finales...")
-        filas = page.query_selector_all("tr")
+        # DIAGNÓSTICO: ¿En qué página estamos realmente?
+        url_actual = page.url
+        print(f"DIAGNÓSTICO -> URL Actual del robot: {url_actual}")
+        if "login" in url_actual.lower():
+            print("⚠️ ¡ALERTA! El robot fue redirigido al Login. El inicio de sesión falló o fue bloqueado.")
         
-        for fila in filas:
+        print("Analizando tabla de OLTs...")
+        filas = page.query_selector_all("tr")
+        print(f"DIAGNÓSTICO -> Se encontraron {len(filas)} filas en la página.")
+        
+        for i, fila in enumerate(filas):
             columnas = fila.query_selector_all("td")
-            
-            # Verificamos que tenga suficientes columnas para llegar a la 6
-            if len(columnas) >= 7:
-                nombre_olt = columnas[2].inner_text().strip()
-                # ¡LAS COORDENADAS CORRECTAS!
-                estado_olt = columnas[6].inner_text().strip()
+            if len(columnas) > 0:
+                textos_columnas = [col.inner_text().strip() for col in columnas]
+                print(f"Fila {i} detectada en crudo: {textos_columnas}")
                 
-                # Guardamos solo si tiene un nombre y el estado dice Online u Offline
-                if nombre_olt != "" and ("Online" in estado_olt or "Offline" in estado_olt):
-                    olts[nombre_olt] = estado_olt
-                    print(f"Equipo guardado en memoria: {nombre_olt} -> {estado_olt}")
+                # Si la fila tiene al menos 7 columnas, extraemos datos
+                if len(columnas) >= 7:
+                    nombre_olt = columnas[2].inner_text().strip()
+                    estado_olt = columnas[6].inner_text().strip()
+                    
+                    # Guardamos la OLT de forma flexible (no importa mayúsculas o minúsculas)
+                    if nombre_olt != "" and ("online" in estado_olt.lower() or "offline" in estado_olt.lower()):
+                        olts[nombre_olt] = estado_olt
+                        print(f"-> Guardado con éxito: {nombre_olt} está {estado_olt}")
         
         browser.close()
     return olts
@@ -61,15 +79,16 @@ def main():
     print("Iniciando escaneo...")
     try:
         estado_actual = obtener_estado_olts()
-        print(f"Total de OLTs listas para monitorear: {estado_actual}")
+        print(f"Resultado final del escaneo: {estado_actual}")
     except Exception as e:
-        print(f"Error en el navegador: {e}")
+        print(f"Error crítico en el navegador: {e}")
         return
 
     if not estado_actual:
-        print("No se encontraron OLTs válidas.")
+        print("❌ ERROR: No se pudo extraer ninguna OLT válida en este intento.")
         return
 
+    # Cargar memoria anterior
     if os.path.exists(ARCHIVO_ESTADO):
         with open(ARCHIVO_ESTADO, "r") as f:
             try:
@@ -79,21 +98,23 @@ def main():
     else:
         estado_anterior = {}
 
-    # Mensaje de bienvenida la primera vez que lee las OLTs con éxito
+    # Si es la primera vez que corre con éxito, enviamos un mensaje de prueba para confirmar
     if not estado_anterior:
-        mensaje_inicio = "🤖 <b>BOT DE MONITOREO INICIADO</b> 🤖\n\nEl sistema ha registrado tus equipos exitosamente y ya está vigilando 24/7."
+        print("Primer ejecución exitosa. Enviando bienvenida a Telegram...")
+        mensaje_inicio = "🤖 <b>BOT DE MONITOREO INICIADO</b> 🤖\n\nEl sistema se ha conectado con éxito a tus OLTs y comenzó la vigilancia 24/7."
         enviar_telegram(mensaje_inicio)
 
+    # Comparar estados para reportar caídas o recuperaciones
     for olt, estado in estado_actual.items():
         estado_previo = estado_anterior.get(olt)
         
-        # Comparamos si el estado cambió para enviar la alerta
         if estado_previo and estado_previo != estado:
-            if "Offline" in estado or "offline" in estado.lower():
+            if "offline" in estado.lower():
                 enviar_telegram(f"🚨 <b>ALERTA DE CAÍDA</b> 🚨\n\nLa OLT <b>{olt}</b> se ha desconectado.\nEstado actual: <b>{estado}</b>")
-            elif "Online" in estado or "online" in estado.lower():
+            elif "online" in estado.lower():
                 enviar_telegram(f"✅ <b>OLT RECUPERADA</b> ✅\n\nLa OLT <b>{olt}</b> vuelve a estar en línea.\nEstado actual: <b>{estado}</b>")
 
+    # Guardar estado actual en la memoria
     with open(ARCHIVO_ESTADO, "w") as f:
         json.dump(estado_actual, f, indent=4)
     print("Proceso finalizado correctamente.")

@@ -36,9 +36,8 @@ def obtener_estado_olts():
         
         try:
             print("Esperando a que la página y los scripts de analítica carguen...")
-            page.wait_for_timeout(3000) # Pequeño margen extra
+            page.wait_for_timeout(3000)
             
-            # --- CAMBIO FUNDAMENTAL: Usamos el texto visible en el formulario ---
             print("Esperando el campo de 'Usuario o Email'...")
             page.get_by_placeholder("Usuario o Email").wait_for(timeout=60000)
             
@@ -47,19 +46,15 @@ def obtener_estado_olts():
             page.get_by_placeholder("Contraseña").fill(PASS_ADMIN)
             
             print("Haciendo clic en el botón 'Acceder'...")
-            # Buscamos el botón exacto que aparece en tu imagen
             page.locator("button:has-text('Acceder')").click()
             
         except Exception as e:
             print(f"❌ ERROR CRÍTICO EN EL LOGIN: {e}")
             print(f"URL actual en el error: {page.url}")
-            html_preview = page.content()[:500]
-            print(f"Vista previa del HTML: {html_preview}")
             page.screenshot(path="error_login.png")
             print("Se ha guardado 'error_login.png'. Revísalo en los Artifacts.")
             raise e 
 
-        # Esperar a que la página redirija tras el login y se estabilice
         page.wait_for_load_state('networkidle')
         
         print("Navegando a la tabla de OLTs...")
@@ -71,7 +66,7 @@ def obtener_estado_olts():
         url_actual = page.url
         print(f"DIAGNÓSTICO -> URL Actual del robot: {url_actual}")
         if "login" in url_actual.lower():
-            print("⚠️ ¡ALERTA! El robot fue redirigido al Login. El inicio de sesión falló o fue bloqueado.")
+            print("⚠️ ¡ALERTA! El robot fue redirigido al Login.")
         
         print("Analizando tabla de OLTs...")
         filas = page.query_selector_all("tr")
@@ -83,11 +78,47 @@ def obtener_estado_olts():
                 textos_columnas = [col.inner_text().strip() for col in columnas]
                 print(f"Fila {i} detectada en crudo: {textos_columnas}")
                 
-                if len(columnas) >= 7:
+                if len(columnas) >= 2:
                     nombre_olt = columnas[2].inner_text().strip()
-                    estado_olt = columnas[6].inner_text().strip()
                     
-                    if nombre_olt != "" and ("online" in estado_olt.lower() or "offline" in estado_olt.lower()):
+                    # 1. Si la OLT ya la guardamos (porque se repite con los puertos), la saltamos
+                    if nombre_olt in olts:
+                        continue
+                    
+                    # 2. Intentar detectar el estado real (Online o Offline)
+                    estado_olt = "Online" # Valor por defecto para que no falle nunca
+                    
+                    # A. Buscar en el texto de todas las columnas
+                    for col in columnas:
+                        texto_columna = col.inner_text().strip().lower()
+                        if "online" in texto_columna:
+                            estado_olt = "Online"
+                            break
+                        elif "offline" in texto_columna:
+                            estado_olt = "Offline"
+                            break
+                    
+                    # B. Buscar en la clase CSS de la fila (si la pintan de verde/rojo)
+                    clase_fila = fila.get_attribute("class")
+                    if clase_fila:
+                        clase_fila = clase_fila.lower()
+                        if "online" in clase_fila:
+                            estado_olt = "Online"
+                        elif "offline" in clase_fila:
+                            estado_olt = "Offline"
+                    
+                    # C. (Opcional) Buscar en la columna 7 que podría tener el icono
+                    if len(columnas) >= 8:
+                        clase_col7 = columnas[7].get_attribute("class")
+                        if clase_col7:
+                            clase_col7 = clase_col7.lower()
+                            if "online" in clase_col7:
+                                estado_olt = "Online"
+                            elif "offline" in clase_col7:
+                                estado_olt = "Offline"
+
+                    # Guardamos la OLT con el estado detectado (o "Online" por defecto)
+                    if nombre_olt != "":
                         olts[nombre_olt] = estado_olt
                         print(f"-> Guardado con éxito: {nombre_olt} está {estado_olt}")
         
@@ -101,7 +132,7 @@ def main():
         print(f"Resultado final del escaneo: {estado_actual}")
     except Exception as e:
         print(f"Error crítico en el navegador: {e}")
-        sys.exit(1) # Hace que el workflow falle y se vea la X roja en GitHub
+        sys.exit(1)
 
     if not estado_actual:
         print("❌ ERROR: No se pudo extraer ninguna OLT válida en este intento.")

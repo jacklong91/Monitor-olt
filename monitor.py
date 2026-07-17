@@ -27,52 +27,54 @@ def enviar_telegram(mensaje):
 def obtener_estado_olts():
     olts = {}
     with sync_playwright() as p:
-        # headless=True para GitHub Actions. Si pruebas en local puedes poner False para ver el navegador
+        # headless=True para GitHub Actions
         browser = p.chromium.launch(headless=True)
         page = browser.new_page()
         
         print("Iniciando sesión...")
         page.goto(URL_ADMIN)
         
-        # --- SOLUCIÓN AL ERROR DE TIMEOUT ---
+        # --- CORRECCIÓN PARA CARGAR SCRIPTS DE GTM Y GA ---
         try:
-            # Espera explícita a que el campo de usuario aparezca en el DOM
-            print("Esperando que el campo de usuario cargue...")
-            page.wait_for_selector("input[name='username']", timeout=15000)
-            page.fill("input[name='username']", USER_ADMIN)
+            # 1. Esperar a que el DOM principal cargue (esto carga Google Analytics y Tag Manager)
+            page.wait_for_load_state('domcontentloaded')
             
-            print("Esperando campo de contraseña...")
-            page.wait_for_selector("input[name='password']", timeout=10000)
+            # 2. Ahora esperar a que el input aparezca. Aumentamos el timeout a 30 segundos (30000ms) porque el HTML tarda en renderizarse
+            print("Esperando que el campo de usuario cargue (dando tiempo a que carguen los scripts)...")
+            page.wait_for_selector("input[name='username']", timeout=30000)
+            
+            print("Rellenando credenciales...")
+            page.fill("input[name='username']", USER_ADMIN)
             page.fill("input[name='password']", PASS_ADMIN)
             
-            print("Haciendo clic en el botón de login...")
+            print("Haciendo clic en el botón de inicio...")
             page.wait_for_selector("button[type='submit']", timeout=10000)
             page.click("button[type='submit']")
             
         except Exception as e:
-            # --- DIAGNÓSTICO AVANZADO SI FALLA EL LOGIN ---
+            # --- DIAGNÓSTICO AVANZADO ---
             print(f"❌ ERROR CRÍTICO EN EL LOGIN: {e}")
             print(f"URL actual en el error: {page.url}")
             
-            # Guarda los primeros caracteres del HTML para depurar si hay redirecciones o banners
+            # Vista previa del HTML para depurar si la URL devuelve un error o redirección
             html_preview = page.content()[:500]
             print(f"Vista previa del HTML: {html_preview}")
             
-            # Toma una captura de pantalla. En GitHub Actions aparecerá en "Artifacts"
+            # Toma una captura. Se guardará en el paso "Subir artefactos de diagnóstico" del workflow
             page.screenshot(path="error_login.png")
             print("Se ha guardado 'error_login.png'. Revísalo en los Artifacts de GitHub Actions.")
             
-            # Relanzamos el error para que el script falle y nos avise en el log de GitHub
             raise e
         # ---------------------------------------------
 
-        # Esperar a que la página se estabilice después del login
+        # Esperar a que la página redirija tras el login y se estabilice
         page.wait_for_load_state('networkidle')
         
         print("Navegando a la tabla de OLTs...")
+        # Si el login fue exitoso, se redirige naturalmente a esta URL.
         page.goto("https://wave.adminolt.com/olt/list/")
         
-        # Espera obligatoria de 10 segundos para que cargue la tabla interna
+        # Espera obligatoria de 10 segundos fijos para que cargue la tabla interna
         print("Esperando 10 segundos fijos para carga de datos...")
         page.wait_for_timeout(10000) 
         
@@ -92,12 +94,10 @@ def obtener_estado_olts():
                 textos_columnas = [col.inner_text().strip() for col in columnas]
                 print(f"Fila {i} detectada en crudo: {textos_columnas}")
                 
-                # Si la fila tiene al menos 7 columnas, extraemos datos
                 if len(columnas) >= 7:
                     nombre_olt = columnas[2].inner_text().strip()
                     estado_olt = columnas[6].inner_text().strip()
                     
-                    # Guardamos la OLT de forma flexible (no importa mayúsculas o minúsculas)
                     if nombre_olt != "" and ("online" in estado_olt.lower() or "offline" in estado_olt.lower()):
                         olts[nombre_olt] = estado_olt
                         print(f"-> Guardado con éxito: {nombre_olt} está {estado_olt}")
@@ -128,7 +128,7 @@ def main():
     else:
         estado_anterior = {}
 
-    # Si es la primera vez que corre con éxito, enviamos un mensaje de prueba para confirmar
+    # Si es la primera vez que corre con éxito, enviamos un mensaje de prueba
     if not estado_anterior:
         print("Primer ejecución exitosa. Enviando bienvenida a Telegram...")
         mensaje_inicio = "🤖 <b>BOT DE MONITOREO INICIADO</b> 🤖\n\nEl sistema se ha conectado con éxito a tus OLTs y comenzó la vigilancia 24/7."

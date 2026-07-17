@@ -37,26 +37,26 @@ def obtener_estado_olts():
         # Esperar a que pase el login
         page.wait_for_load_state('networkidle')
         
-        # 2. Ir directamente a la lista de OLTs que me pasaste
+        # 2. Ir directamente a la lista de OLTs
         print("Navegando a la tabla de OLTs...")
         page.goto("https://wave.adminolt.com/olt/list/")
         
-        # 3. Esperar pacientemente (hasta 15 seg) a que la tabla aparezca
-        print("Esperando a que carguen los datos...")
-        page.wait_for_selector("table tbody tr", timeout=15000)
+        # 3. Espera fija y obligatoria de 10 segundos
+        print("Esperando 10 segundos fijos para que todo el sistema cargue...")
+        page.wait_for_timeout(10000) 
         
-        # 4. Extraer los datos
+        # 4. Verificación de seguridad (Saber dónde está parado el robot)
+        print(f"La URL actual donde está leyendo el robot es: {page.url}")
+        
+        # 5. Extraer los datos de forma más flexible
         print("Leyendo filas...")
-        filas = page.query_selector_all("table tbody tr")
+        filas = page.query_selector_all("tr") # Busca cualquier fila sin ser estricto
         
         for fila in filas:
             columnas = fila.query_selector_all("td")
             
-            # Verificamos que la fila tenga al menos 6 columnas
             if len(columnas) >= 6:
-                # La Columna 3 (índice 2) es el nombre de la OLT
                 nombre_olt = columnas[2].inner_text().strip()
-                # La Columna 6 (índice 5) es el Estado (Online/Offline)
                 estado_olt = columnas[5].inner_text().strip()
                 
                 if nombre_olt:
@@ -75,7 +75,7 @@ def main():
         return
 
     if not estado_actual:
-        print("No se encontraron OLTs. El archivo JSON quedará vacío.")
+        print("No se encontraron OLTs. Revisa arriba si el robot se quedó atascado en el Login.")
         return
 
     # Leer la memoria del robot
@@ -92,7 +92,6 @@ def main():
     for olt, estado in estado_actual.items():
         estado_previo = estado_anterior.get(olt)
         
-        # Si la OLT ya existía en la memoria y su estado cambió
         if estado_previo and estado_previo != estado:
             if "Offline" in estado or "offline" in estado.lower():
                 mensaje = f"🚨 <b>ALERTA DE CAÍDA</b> 🚨\n\nLa OLT <b>{olt}</b> se ha desconectado.\nEstado actual: <b>{estado}</b>"
@@ -108,4 +107,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-    

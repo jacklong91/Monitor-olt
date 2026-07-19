@@ -26,7 +26,7 @@ def enviar_telegram(mensaje):
                 print(f"DIAGNÓSTICO TELEGRAM -> Error al conectar: {e}")
 
 def obtener_estado_olts():
-    olts = {} # Guardará los datos usando la IP como clave única
+    olts = {}
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True)
         page = browser.new_page()
@@ -72,20 +72,20 @@ def obtener_estado_olts():
         
         for i, fila in enumerate(filas):
             columnas = fila.query_selector_all("td")
-            if len(columnas) >= 6: # La tabla tiene 6 columnas visibles
-                modelo_olt = columnas[1].inner_text().strip()  # Columna "OLT"
-                zona_olt = columnas[2].inner_text().strip()    # Columna "Nombre"
-                ip_olt = columnas[3].inner_text().strip()      # Columna "Host" (La usaremos como ID único)
-                estado_olt = columnas[4].inner_text().strip().lower() # Columna "Estado" (Online/Offline)
+            if len(columnas) >= 6:
+                modelo_olt = columnas[1].inner_text().strip()
+                zona_olt = columnas[2].inner_text().strip()
+                ip_olt = columnas[3].inner_text().strip()
+                estado_olt = columnas[4].inner_text().strip().lower()
                 
                 if modelo_olt != "" and (estado_olt == "online" or estado_olt == "offline"):
-                    # Usamos la IP como clave para no confundir modelos duplicados
-                    clave_olt = ip_olt
+                    # CORRECCIÓN: Creamos una clave ÚNICA combinando IP y Nombre para evitar sobreescrituras
                     nombre_amigable = f"{modelo_olt} ({zona_olt})"
+                    clave_unica = f"{ip_olt}_{nombre_amigable}"
                     
-                    # Guardamos la información en el diccionario
-                    olts[clave_olt] = {
-                        "nombre": nombre_amigable,
+                    olts[clave_unica] = {
+                        "nombre": nombre_amigable, 
+                        "ip": ip_olt, 
                         "estado": estado_olt
                     }
                     print(f"-> OLT guardada: {nombre_amigable} -> IP: {ip_olt} -> Estado: {estado_olt}")
@@ -123,18 +123,17 @@ def main():
         enviar_telegram(mensaje_inicio)
 
     # Comparar estados actuales con los anteriores
-    for clave_olt, datos in estado_actual.items():
-        # clave_olt es la IP de la OLT
-        estado_previo = estado_anterior.get(clave_olt, {}).get("estado")
+    for clave_unica, datos in estado_actual.items():
+        estado_previo = estado_anterior.get(clave_unica, {}).get("estado")
         estado_actual_olt = datos["estado"]
         
         if estado_previo and estado_previo != estado_actual_olt:
             if "offline" in estado_actual_olt:
-                enviar_telegram(f"🚨 <b>ALERTA DE CAÍDA</b> 🚨\n\nLa OLT <b>{datos['nombre']}</b> se ha desconectado.\nIP: {clave_olt}\nEstado actual: <b>{estado_actual_olt.upper()}</b>")
+                enviar_telegram(f"🚨 <b>ALERTA DE CAÍDA</b> 🚨\n\nLa OLT <b>{datos['nombre']}</b> se ha desconectado.\nIP: {datos['ip']}\nEstado actual: <b>{estado_actual_olt.upper()}</b>")
             elif "online" in estado_actual_olt:
-                enviar_telegram(f"✅ <b>OLT RECUPERADA</b> ✅\n\nLa OLT <b>{datos['nombre']}</b> vuelve a estar en línea.\nIP: {clave_olt}\nEstado actual: <b>{estado_actual_olt.upper()}</b>")
+                enviar_telegram(f"✅ <b>OLT RECUPERADA</b> ✅\n\nLa OLT <b>{datos['nombre']}</b> vuelve a estar en línea.\nIP: {datos['ip']}\nEstado actual: <b>{estado_actual_olt.upper()}</b>")
 
-    # Guardar estado actual en la memoria (sobrescribe el anterior)
+    # Guardar estado actual en la memoria
     with open(ARCHIVO_ESTADO, "w") as f:
         json.dump(estado_actual, f, indent=4)
     print("Proceso finalizado correctamente.")

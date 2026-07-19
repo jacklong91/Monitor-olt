@@ -1,26 +1,77 @@
 {
-    "190.8.165.234": {
-        "nombre": "Vsol-V1600G2\nVsol (OLT4-N4BDR-ZONA3)",
+    "190.8.165.234_Vsol-V1600G1\nVsol (OLT3-N4BDR-ZONA3)": {
+        "nombre": "Vsol-V1600G1\nVsol (OLT3-N4BDR-ZONA3)",
+        "ip": "190.8.165.234",
         "estado": "online"
     },
-    "190.8.165.227": {
-        "nombre": "Vsol-V1600G2\nVsol (OLT2-Z2-ATAMO)",
+    "190.8.165.227_Vsol-V1600G2\nVsol (OLT4-Z2-VENETUR)": {
+        "nombre": "Vsol-V1600G2\nVsol (OLT4-Z2-VENETUR)",
+        "ip": "190.8.165.227",
         "estado": "online"
     },
-    "190.8.165.225": {
-        "nombre": "Vsol-V1600G2\nVsol (OLT2-R2-ZONA1-MGTA)",
+    "190.8.165.225_Vsol-V1600G2\nVsol (OLT6-ZONA1)": {
+        "nombre": "Vsol-V1600G2\nVsol (OLT6-ZONA1)",
+        "ip": "190.8.165.225",
         "estado": "online"
     },
-    "190.8.165.226": {
-        "nombre": "Vsol-V1600G2\nVsol (OLT2-R3-ZONA1)",
+    "190.8.165.234_Vsol-V1600G1\nVsol (OLT1-N5BDPZ-ZONA3)": {
+        "nombre": "Vsol-V1600G1\nVsol (OLT1-N5BDPZ-ZONA3)",
+        "ip": "190.8.165.234",
         "estado": "online"
     },
-    "190.8.164.246": {
-        "nombre": "Vsol-V1600G2\nVsol (OLT1-R2-CGNAT1-CRPN)",
+    "190.8.165.234_Vsol-V1600G2\nVsol (OLT2-N5BDPZ-ZONA3)": {
+        "nombre": "Vsol-V1600G2\nVsol (OLT2-N5BDPZ-ZONA3)",
+        "ip": "190.8.165.234",
+        "estado": "online"
+    },
+    "190.8.165.226_Vsol-V1600G2\nVsol (OLT1-R3-ZONA1)": {
+        "nombre": "Vsol-V1600G2\nVsol (OLT1-R3-ZONA1)",
+        "ip": "190.8.165.226",
+        "estado": "online"
+    },
+    "190.8.164.246_Vsol-V1600G2\nVsol (OLT1-R1-CGNAT1-CRPN)": {
+        "nombre": "Vsol-V1600G2\nVsol (OLT1-R1-CGNAT1-CRPN)",
+        "ip": "190.8.164.246",
         "estado": "offline"
     },
-    "190.8.165.228": {
+    "190.8.164.246_Vsol-V1600G2\nVsol (OLT2-R1-CGNAT1-CRPN)": {
+        "nombre": "Vsol-V1600G2\nVsol (OLT2-R1-CGNAT1-CRPN)",
+        "ip": "190.8.164.246",
+        "estado": "offline"
+    },
+    "190.8.165.226_Vsol-V1600G2\nVsol (OLT2-R3-ZONA1)": {
+        "nombre": "Vsol-V1600G2\nVsol (OLT2-R3-ZONA1)",
+        "ip": "190.8.165.226",
+        "estado": "online"
+    },
+    "190.8.165.227_Vsol-V1600G2\nVsol (OLT2-Z2-ATAMO)": {
+        "nombre": "Vsol-V1600G2\nVsol (OLT2-Z2-ATAMO)",
+        "ip": "190.8.165.227",
+        "estado": "online"
+    },
+    "190.8.164.246_Vsol-V1600G2\nVsol (OLT1-R2-CGNAT1-CRPN)": {
+        "nombre": "Vsol-V1600G2\nVsol (OLT1-R2-CGNAT1-CRPN)",
+        "ip": "190.8.164.246",
+        "estado": "offline"
+    },
+    "190.8.165.234_Vsol-V1600G2\nVsol (OLT5-N4BDR-ZONA3)": {
+        "nombre": "Vsol-V1600G2\nVsol (OLT5-N4BDR-ZONA3)",
+        "ip": "190.8.165.234",
+        "estado": "online"
+    },
+    "190.8.165.225_Vsol-V1600G2\nVsol (OLT2-R2-ZONA1-MGTA)": {
+        "nombre": "Vsol-V1600G2\nVsol (OLT2-R2-ZONA1-MGTA)",
+        "ip": "190.8.165.225",
+        "estado": "online"
+    },
+    "190.8.165.228_Vsol-V1600G1\nVsol (OLT1-N9-R1-ZONA3-MGTA)": {
         "nombre": "Vsol-V1600G1\nVsol (OLT1-N9-R1-ZONA3-MGTA)",
+        "ip": "190.8.165.228",
+        "estado": "online"
+    },
+    "190.8.165.234_Vsol-V1600G2\nVsol (OLT4-N4BDR-ZONA3)": {
+        "nombre": "Vsol-V1600G2\nVsol (OLT4-N4BDR-ZONA3)",
+        "ip": "190.8.165.234",
         "estado": "online"
     }
 }

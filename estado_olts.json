@@ -9,7 +9,7 @@
     },
     "190.8.165.225": {
         "nombre": "Vsol-V1600G2\nVsol (OLT2-R2-ZONA1-MGTA)",
-        "estado": "offline"
+        "estado": "online"
     },
     "190.8.165.226": {
         "nombre": "Vsol-V1600G2\nVsol (OLT2-R3-ZONA1)",

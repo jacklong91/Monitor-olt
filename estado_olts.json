@@ -17,12 +17,12 @@
     "190.8.165.234_Vsol-V1600G1\nVsol (OLT1-N5BDPZ-ZONA3)": {
         "nombre": "Vsol-V1600G1\nVsol (OLT1-N5BDPZ-ZONA3)",
         "ip": "190.8.165.234",
-        "estado": "online"
+        "estado": "offline"
     },
     "190.8.165.234_Vsol-V1600G2\nVsol (OLT2-N5BDPZ-ZONA3)": {
         "nombre": "Vsol-V1600G2\nVsol (OLT2-N5BDPZ-ZONA3)",
         "ip": "190.8.165.234",
-        "estado": "online"
+        "estado": "offline"
     },
     "190.8.165.226_Vsol-V1600G2\nVsol (OLT1-R3-ZONA1)": {
         "nombre": "Vsol-V1600G2\nVsol (OLT1-R3-ZONA1)",

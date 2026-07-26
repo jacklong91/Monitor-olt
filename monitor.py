@@ -33,24 +33,8 @@ def obtener_estado_olts():
         print("Iniciando sesión...")
         page.goto(URL_ADMIN)
         
-        # RAYOS X: Imprimimos la URL y el Título de la página para saber dónde estamos
-        print(f"URL actual detectada: {page.url}")
-        print(f"Título de la página: {page.title()}")
-        
-        try:
-            # Esperamos solo 15 segundos para no perder tiempo si está bloqueado
-            page.wait_for_selector("input[name='username']", timeout=15000)
-        except Exception as e:
-            print("❌ ERROR: El cuadro de usuario no apareció.")
-            print("--- LO QUE EL ROBOT ESTÁ VIENDO EN PANTALLA ---")
-            try:
-                texto_pantalla = page.locator("body").inner_text()
-                print(texto_pantalla[:500]) # Imprime los primeros 500 caracteres
-            except:
-                print("No se pudo leer el texto de la pantalla.")
-            print("-----------------------------------------------")
-            raise e # Detiene el código
-            
+        # --- TU LOGIN ORIGINAL INTACTO ---
+        page.wait_for_selector("input[name='username']", timeout=60000)
         page.fill("input[name='username']", USER_ADMIN)
         page.fill("input[name='password']", PASS_ADMIN)
         page.click("button[type='submit']")

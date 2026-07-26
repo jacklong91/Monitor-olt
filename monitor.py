@@ -1,7 +1,7 @@
 import os
 import json
-import sys
 import requests
+import time
 from playwright.sync_api import sync_playwright
 
 URL_ADMIN = os.environ.get("URL_ADMIN")
@@ -20,10 +20,9 @@ def enviar_telegram(mensaje):
             url = f"https://api.telegram.org/bot{TG_TOKEN}/sendMessage"
             payload = {"chat_id": chat_id_limpio, "text": mensaje, "parse_mode": "HTML"}
             try:
-                r = requests.post(url, json=payload)
-                print(f"DIAGNÓSTICO TELEGRAM -> Servidor respondió: {r.status_code} - {r.text}")
+                requests.post(url, json=payload)
             except Exception as e:
-                print(f"DIAGNÓSTICO TELEGRAM -> Error al conectar: {e}")
+                print(f"Error Telegram: {e}")
 
 def obtener_estado_olts():
     olts = {}
@@ -32,63 +31,29 @@ def obtener_estado_olts():
         page = browser.new_page()
         
         print("Iniciando sesión...")
-        page.goto(URL_ADMIN, wait_until="networkidle", timeout=60000)
+        page.goto(URL_ADMIN)
         
-        try:
-            print("Esperando a que la página cargue...")
-            page.wait_for_timeout(3000)
-            
-            print("Esperando el campo de 'Usuario o Email'...")
-            page.get_by_placeholder("Usuario o Email").wait_for(timeout=60000)
-            
-            print("Rellenando credenciales...")
-            page.get_by_placeholder("Usuario o Email").fill(USER_ADMIN)
-            page.get_by_placeholder("Contraseña").fill(PASS_ADMIN)
-            
-            print("Haciendo clic en el botón 'Acceder'...")
-            page.locator("button:has-text('Acceder')").click()
-            
-        except Exception as e:
-            print(f"❌ ERROR CRÍTICO EN EL LOGIN: {e}")
-            page.screenshot(path="error_login.png")
-            raise e 
-
+        # Esto soluciona el error de "Timeout 30000ms" obligando a esperar a que cargue el cuadro
+        page.wait_for_selector("input[name='username']", timeout=60000)
+        page.fill("input[name='username']", USER_ADMIN)
+        page.fill("input[name='password']", PASS_ADMIN)
+        page.click("button[type='submit']")
         page.wait_for_load_state('networkidle')
         
         print("Navegando a la tabla de OLTs...")
         page.goto("https://wave.adminolt.com/olt/list/")
-        
-        print("Esperando 10 segundos fijos para carga de datos...")
         page.wait_for_timeout(10000) 
         
-        url_actual = page.url
-        print(f"DIAGNÓSTICO -> URL Actual del robot: {url_actual}")
-        if "login" in url_actual.lower():
-            print("⚠️ ¡ALERTA! El robot fue redirigido al Login.")
-        
-        print("Analizando tabla de OLTs...")
+        print("Analizando tabla...")
         filas = page.query_selector_all("tr")
-        print(f"DIAGNÓSTICO -> Se encontraron {len(filas)} filas en la página.")
         
-        for i, fila in enumerate(filas):
+        for fila in filas:
             columnas = fila.query_selector_all("td")
-            if len(columnas) >= 6:
-                modelo_olt = columnas[1].inner_text().strip()
-                zona_olt = columnas[2].inner_text().strip()
-                ip_olt = columnas[3].inner_text().strip()
-                estado_olt = columnas[4].inner_text().strip().lower()
-                
-                if modelo_olt != "" and (estado_olt == "online" or estado_olt == "offline"):
-                    # CORRECCIÓN: Creamos una clave ÚNICA combinando IP y Nombre para evitar sobreescrituras
-                    nombre_amigable = f"{modelo_olt} ({zona_olt})"
-                    clave_unica = f"{ip_olt}_{nombre_amigable}"
-                    
-                    olts[clave_unica] = {
-                        "nombre": nombre_amigable, 
-                        "ip": ip_olt, 
-                        "estado": estado_olt
-                    }
-                    print(f"-> OLT guardada: {nombre_amigable} -> IP: {ip_olt} -> Estado: {estado_olt}")
+            if len(columnas) >= 7:
+                nombre_olt = columnas[2].inner_text().strip()
+                estado_olt = columnas[6].inner_text().strip()
+                if nombre_olt != "" and ("online" in estado_olt.lower() or "offline" in estado_olt.lower()):
+                    olts[nombre_olt] = estado_olt
         
         browser.close()
     return olts
@@ -97,45 +62,70 @@ def main():
     print("Iniciando escaneo...")
     try:
         estado_actual = obtener_estado_olts()
-        print(f"Resultado final del escaneo: {estado_actual}")
     except Exception as e:
-        print(f"Error crítico en el navegador: {e}")
-        sys.exit(1)
+        print(f"Error en el navegador: {e}")
+        return
 
     if not estado_actual:
-        print("❌ ERROR: No se pudo extraer ninguna OLT válida en este intento.")
-        sys.exit(1)
+        print("No se encontraron OLTs.")
+        return
 
-    # Cargar memoria anterior
+    estado_anterior = {}
+    ultima_notificacion = 0
+
+    # Leer la memoria del robot (Ahora con reloj incluido)
     if os.path.exists(ARCHIVO_ESTADO):
         with open(ARCHIVO_ESTADO, "r") as f:
             try:
-                estado_anterior = json.load(f)
+                datos = json.load(f)
+                # Leemos los equipos y el reloj de la última notificación
+                if "equipos" in datos:
+                    estado_anterior = datos["equipos"]
+                    ultima_notificacion = datos.get("ultima_notificacion", 0)
+                else:
+                    estado_anterior = datos
             except:
-                estado_anterior = {}
-    else:
-        estado_anterior = {}
+                pass
 
-    # Si es la primera vez, enviamos bienvenida
+    # Mensaje de arranque por primera vez
     if not estado_anterior:
-        print("Primer ejecución exitosa. Enviando bienvenida a Telegram...")
-        mensaje_inicio = "🤖 <b>BOT DE MONITOREO INICIADO</b> 🤖\n\nEl sistema se ha conectado con éxito a tus OLTs y comenzó la vigilancia 24/7."
-        enviar_telegram(mensaje_inicio)
+        enviar_telegram("🤖 <b>BOT INICIADO</b> 🤖\n\nEl sistema ya está vigilando 24/7. Te avisaré al instante si hay caídas, o cada 3 horas si todo está bien.")
 
-    # Comparar estados actuales con los anteriores
-    for clave_unica, datos in estado_actual.items():
-        estado_previo = estado_anterior.get(clave_unica, {}).get("estado")
-        estado_actual_olt = datos["estado"]
+    hubo_cambios = False
+
+    # Comparar estados y enviar alertas urgentes
+    for olt, estado in estado_actual.items():
+        estado_previo = estado_anterior.get(olt)
         
-        if estado_previo and estado_previo != estado_actual_olt:
-            if "offline" in estado_actual_olt:
-                enviar_telegram(f"🚨 <b>ALERTA DE CAÍDA</b> 🚨\n\nLa OLT <b>{datos['nombre']}</b> se ha desconectado.\nIP: {datos['ip']}\nEstado actual: <b>{estado_actual_olt.upper()}</b>")
-            elif "online" in estado_actual_olt:
-                enviar_telegram(f"✅ <b>OLT RECUPERADA</b> ✅\n\nLa OLT <b>{datos['nombre']}</b> vuelve a estar en línea.\nIP: {datos['ip']}\nEstado actual: <b>{estado_actual_olt.upper()}</b>")
+        if estado_previo and estado_previo != estado:
+            hubo_cambios = True
+            if "offline" in estado.lower():
+                enviar_telegram(f"🚨 <b>ALERTA DE CAÍDA</b> 🚨\n\nLa OLT <b>{olt}</b> se ha desconectado.\nEstado actual: <b>{estado}</b>")
+            elif "online" in estado.lower():
+                enviar_telegram(f"✅ <b>OLT RECUPERADA</b> ✅\n\nLa OLT <b>{olt}</b> vuelve a estar en línea.\nEstado actual: <b>{estado}</b>")
 
-    # Guardar estado actual en la memoria
+    tiempo_actual = time.time()
+    
+    # Si hubo una caída o recuperación, reiniciamos el reloj de 3 horas
+    if hubo_cambios:
+        ultima_notificacion = tiempo_actual
+    
+    # Si NO hubo cambios, verificamos si ya pasaron 3 horas (10800 segundos)
+    if not hubo_cambios and (tiempo_actual - ultima_notificacion) >= 10800:
+        # Enviar el reporte de tranquilidad
+        enviar_telegram("🕒 <b>REPORTE DE RUTINA</b> 🕒\n\n✅ <b>Sin Novedad:</b> El sistema sigue escaneando automáticamente. Ninguna OLT ha presentado caídas en las últimas 3 horas.")
+        # Reiniciamos el reloj para que cuente otras 3 horas
+        ultima_notificacion = tiempo_actual
+
+    # Guardar la nueva memoria y el reloj
+    datos_a_guardar = {
+        "equipos": estado_actual,
+        "ultima_notificacion": ultima_notificacion
+    }
+
     with open(ARCHIVO_ESTADO, "w") as f:
-        json.dump(estado_actual, f, indent=4)
+        json.dump(datos_a_guardar, f, indent=4)
+        
     print("Proceso finalizado correctamente.")
 
 if __name__ == "__main__":

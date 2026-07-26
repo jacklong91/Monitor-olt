@@ -7,6 +7,9 @@ from playwright.sync_api import sync_playwright
 def enviar_telegram(mensaje):
     token = os.environ.get('TG_TOKEN')
     chat_id = os.environ.get('TG_CHAT_ID')
+    if not token or not chat_id:
+        print("Falta el token o chat id de Telegram.")
+        return
     url = f"https://api.telegram.org/bot{token}/sendMessage"
     
     for cid in chat_id.split(','):
@@ -25,6 +28,8 @@ def main():
 
     tiempo_actual = time.time()
     ultima_alerta_rutina = estado_anterior.get('ultima_alerta_rutina', 0)
+    # Variable para saber si ya te envió el mensaje de que fue reparado
+    bot_reparado_confirmado = estado_anterior.get('bot_reparado_confirmado', False)
 
     print("Iniciando escaneo...")
 
@@ -37,12 +42,19 @@ def main():
             print("Iniciando sesión...")
             page.goto(url_admin, timeout=60000)
             
-            # --- TU INICIO DE SESIÓN ORIGINAL INTACTO ---
-            page.wait_for_selector("input[name='username']", timeout=60000)
-            page.fill("input[name='username']", user_admin)
-            page.fill("input[name='password']", pass_admin)
+            # 1. BUSCAMOS POR EL TEXTO EXACTO DE LA IMAGEN QUE ME PASASTE
+            # Busca la caja que contenga la palabra "Usuario"
+            caja_usuario = page.locator("input[placeholder*='Usuario'], input[name='username'], input[type='text']").first
+            caja_usuario.wait_for(state="visible", timeout=60000)
+            caja_usuario.fill(user_admin)
+            
+            # Busca la caja que contenga la palabra "Contraseña"
+            caja_password = page.locator("input[placeholder*='Contraseña'], input[name='password'], input[type='password']").first
+            caja_password.fill(pass_admin)
+            
             page.keyboard.press("Enter")
             
+            # Esperamos 5 segundos
             page.wait_for_timeout(5000) 
             
             print("Navegando a la lista de OLTs...")
@@ -73,18 +85,26 @@ def main():
                             recuperadas.append(nombre)
             
             estado_actual['ultima_alerta_rutina'] = ultima_alerta_rutina
+            estado_actual['bot_reparado_confirmado'] = bot_reparado_confirmado
             
             if caidas:
                 enviar_telegram(f"⚠️ ¡ALERTA CRÍTICA!\nOLTs Caídas:\n" + "\n".join(caidas))
             if recuperadas:
                 enviar_telegram(f"✅ ¡RECUPERACIÓN!\nOLTs en Línea:\n" + "\n".join(recuperadas))
+            
+            # === 2. TU AVISO DE FUNCIONAMIENTO ===
+            # Si logra llegar hasta aquí, te enviará este mensaje a Telegram de inmediato.
+            if not bot_reparado_confirmado:
+                enviar_telegram("✅ AVISO DE FUNCIONAMIENTO: El bot fue reparado. Ha logrado iniciar sesión exitosamente y está leyendo la tabla de OLTs.")
+                estado_actual['bot_reparado_confirmado'] = True
                 
-            # --- ÚNICA ADICIÓN: REPORTE DE RUTINA CADA 3 HORAS ---
+            # Tu reporte de rutina cada 3 horas
             if not caidas and not recuperadas:
                 if tiempo_actual - ultima_alerta_rutina >= 10800:
                     enviar_telegram("✅ Reporte de rutina: Sistema activo vigilando. Sin novedad en las OLTs.")
                     estado_actual['ultima_alerta_rutina'] = tiempo_actual
             
+            # Guardamos la información
             with open(archivo_estado, 'w') as f:
                 json.dump(estado_actual, f)
                 
@@ -92,6 +112,8 @@ def main():
 
         except Exception as e:
             print(f"Error en el navegador: {e}")
+            # 3. SI HAY UN ERROR, AHORA TE LO AVISARÁ POR TELEGRAM
+            enviar_telegram(f"⚠️ El bot se atascó o falló. Revisa GitHub. Error detectado: {e}")
         finally:
             browser.close()
 

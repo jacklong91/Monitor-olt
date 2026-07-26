@@ -30,7 +30,6 @@ def main():
 
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True)
-        # Identificador para evitar bloqueos
         context = browser.new_context(user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/110.0.0.0 Safari/537.36")
         page = context.new_page()
 
@@ -38,24 +37,12 @@ def main():
             print("Iniciando sesión...")
             page.goto(url_admin, timeout=60000)
             
-            # Esperamos a que la página cargue completamente
-            page.wait_for_load_state("networkidle")
-            
-            # Imprimimos el título de la página. Si dice algo como "Just a moment...", sabemos que nos bloquearon.
-            print(f"El bot está viendo esta página: {page.title()}")
-            
-            # --- TU INICIO DE SESIÓN MEJORADO ---
-            # En lugar de buscar un solo nombre, le damos varias opciones (name, id, o simplemente la primera caja de texto) para que no falle.
-            caja_usuario = page.locator("input[name='username'], input#username, input[type='text']").first
-            caja_usuario.wait_for(state="visible", timeout=60000)
-            caja_usuario.fill(user_admin)
-            
-            caja_password = page.locator("input[name='password'], input#password, input[type='password']").first
-            caja_password.fill(pass_admin)
-            
+            # --- TU INICIO DE SESIÓN ORIGINAL INTACTO ---
+            page.wait_for_selector("input[name='username']", timeout=60000)
+            page.fill("input[name='username']", user_admin)
+            page.fill("input[name='password']", pass_admin)
             page.keyboard.press("Enter")
             
-            # Esperamos 5 segundos obligatorios para que cargue el inicio de sesión
             page.wait_for_timeout(5000) 
             
             print("Navegando a la lista de OLTs...")
@@ -92,11 +79,11 @@ def main():
             if recuperadas:
                 enviar_telegram(f"✅ ¡RECUPERACIÓN!\nOLTs en Línea:\n" + "\n".join(recuperadas))
                 
-            # --- REPORTE CADA 3 HORAS (10800 Segundos) ---
+            # --- ÚNICA ADICIÓN: REPORTE DE RUTINA CADA 3 HORAS ---
             if not caidas and not recuperadas:
-                if tiempo_actual - ultima_alerta_rutina >= 10800: 
+                if tiempo_actual - ultima_alerta_rutina >= 10800:
                     enviar_telegram("✅ Reporte de rutina: Sistema activo vigilando. Sin novedad en las OLTs.")
-                    estado_actual['ultima_alerta_rutina'] = tiempo_actual 
+                    estado_actual['ultima_alerta_rutina'] = tiempo_actual
             
             with open(archivo_estado, 'w') as f:
                 json.dump(estado_actual, f)
@@ -106,10 +93,6 @@ def main():
         except Exception as e:
             print(f"Error en el navegador: {e}")
         finally:
-            browser.close()
-
-if __name__ == "__main__":
-    main()
             browser.close()
 
 if __name__ == "__main__":

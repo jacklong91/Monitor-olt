@@ -33,8 +33,24 @@ def obtener_estado_olts():
         print("Iniciando sesión...")
         page.goto(URL_ADMIN)
         
-        # Esto soluciona el error de "Timeout 30000ms" obligando a esperar a que cargue el cuadro
-        page.wait_for_selector("input[name='username']", timeout=60000)
+        # RAYOS X: Imprimimos la URL y el Título de la página para saber dónde estamos
+        print(f"URL actual detectada: {page.url}")
+        print(f"Título de la página: {page.title()}")
+        
+        try:
+            # Esperamos solo 15 segundos para no perder tiempo si está bloqueado
+            page.wait_for_selector("input[name='username']", timeout=15000)
+        except Exception as e:
+            print("❌ ERROR: El cuadro de usuario no apareció.")
+            print("--- LO QUE EL ROBOT ESTÁ VIENDO EN PANTALLA ---")
+            try:
+                texto_pantalla = page.locator("body").inner_text()
+                print(texto_pantalla[:500]) # Imprime los primeros 500 caracteres
+            except:
+                print("No se pudo leer el texto de la pantalla.")
+            print("-----------------------------------------------")
+            raise e # Detiene el código
+            
         page.fill("input[name='username']", USER_ADMIN)
         page.fill("input[name='password']", PASS_ADMIN)
         page.click("button[type='submit']")
@@ -73,12 +89,10 @@ def main():
     estado_anterior = {}
     ultima_notificacion = 0
 
-    # Leer la memoria del robot (Ahora con reloj incluido)
     if os.path.exists(ARCHIVO_ESTADO):
         with open(ARCHIVO_ESTADO, "r") as f:
             try:
                 datos = json.load(f)
-                # Leemos los equipos y el reloj de la última notificación
                 if "equipos" in datos:
                     estado_anterior = datos["equipos"]
                     ultima_notificacion = datos.get("ultima_notificacion", 0)
@@ -87,13 +101,11 @@ def main():
             except:
                 pass
 
-    # Mensaje de arranque por primera vez
     if not estado_anterior:
         enviar_telegram("🤖 <b>BOT INICIADO</b> 🤖\n\nEl sistema ya está vigilando 24/7. Te avisaré al instante si hay caídas, o cada 3 horas si todo está bien.")
 
     hubo_cambios = False
 
-    # Comparar estados y enviar alertas urgentes
     for olt, estado in estado_actual.items():
         estado_previo = estado_anterior.get(olt)
         
@@ -106,18 +118,13 @@ def main():
 
     tiempo_actual = time.time()
     
-    # Si hubo una caída o recuperación, reiniciamos el reloj de 3 horas
     if hubo_cambios:
         ultima_notificacion = tiempo_actual
     
-    # Si NO hubo cambios, verificamos si ya pasaron 3 horas (10800 segundos)
     if not hubo_cambios and (tiempo_actual - ultima_notificacion) >= 10800:
-        # Enviar el reporte de tranquilidad
         enviar_telegram("🕒 <b>REPORTE DE RUTINA</b> 🕒\n\n✅ <b>Sin Novedad:</b> El sistema sigue escaneando automáticamente. Ninguna OLT ha presentado caídas en las últimas 3 horas.")
-        # Reiniciamos el reloj para que cuente otras 3 horas
         ultima_notificacion = tiempo_actual
 
-    # Guardar la nueva memoria y el reloj
     datos_a_guardar = {
         "equipos": estado_actual,
         "ultima_notificacion": ultima_notificacion

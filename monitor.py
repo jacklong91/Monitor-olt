@@ -24,7 +24,7 @@ OLTS_CRITICAS = [
 
 # =========================================================================
 # CONFIGURACIÓN DE OLTs APAGADAS / SIN TRABAJAR (Siempre en Offline)
-# Solo alertarán si cambian a ONLINE. No molestarán si están caídas.
+# Solo alertarán si cambian a ONLINE.
 # =========================================================================
 OLTS_INACTIVAS_PERMANENTES = [
     "OLT1-R1-CGNAT1-CRPN",
@@ -115,24 +115,26 @@ def main():
                     
                     estado_previo = estado_anterior.get(nombre)
                     
-                    # CASO A: OLTs Inactivas Permanentes (Solo reportan si pasan de Offline a Online)
+                    # 1. CASO OLTs Inactivas Permanentes (Solo reportan si pasan de Offline a Online)
                     if nombre in OLTS_INACTIVAS_PERMANENTES:
                         if estado_previo == 'Offline' and estado == 'Online':
                             recuperadas.append(nombre)
-                        continue # Evitamos que entren a la lógica normal de caídas
+                        continue 
                     
-                    # CASO B: Transición normal de Online a Offline
-                    if estado_previo == 'Online' and estado == 'Offline':
-                        caidas.append(nombre)
-                    
-                    # CASO C: Transición normal de Offline a Online
-                    elif estado_previo == 'Offline' and estado == 'Online':
-                        recuperadas.append(nombre)
-                    
-                    # CASO D: OLTs Críticas que aparecen Offline y la memoria estaba vacía/cambiando
-                    elif nombre in OLTS_CRITICAS and estado == 'Offline' and estado_previo != 'Offline':
+                    # 2. CASO OLTs Críticas: Si están en la lista y se encuentran en Offline, alertar de inmediato
+                    if nombre in OLTS_CRITICAS and estado == 'Offline':
                         if nombre not in caidas:
                             caidas.append(nombre)
+                        continue
+
+                    # 3. Transición normal de Online a Offline para las demás
+                    if estado_previo == 'Online' and estado == 'Offline':
+                        if nombre not in caidas:
+                            caidas.append(nombre)
+                    
+                    # 4. Transición normal de Offline a Online para las demás
+                    elif estado_previo == 'Offline' and estado == 'Online':
+                        recuperadas.append(nombre)
             
             estado_actual['ultima_alerta_rutina'] = ultima_alerta_rutina
             estado_actual['bot_reparado_confirmado'] = bot_reparado_confirmado

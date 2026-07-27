@@ -78,19 +78,14 @@ def main():
             print("📋 Navegando a la lista de OLTs...")
             page.goto("https://wave.adminolt.com/olt/list/", timeout=60000)
             
-            # ============ CORRECCIÓN DE CARGA DINÁMICA ============
             print("⏳ Esperando a que la tabla cargue los datos reales...")
-            # Espera a que el texto "Cargando..." desaparezca
             try:
                 page.wait_for_selector("text=Cargando...", state="detached", timeout=60000)
                 print("✅ El mensaje de 'Cargando...' ha desaparecido.")
             except Exception:
-                # Si la tabla nunca tuvo ese texto, continuamos
                 print("ℹ️ No se encontró el mensaje de carga, la tabla ya podría estar lista.")
             
-            # Ahora sí, esperamos a que las filas de la tabla estén presentes
             page.wait_for_selector("table tbody tr", timeout=45000)
-            # =======================================================
             
             filas = page.query_selector_all("table tbody tr")
             print(f"🔍 Filas encontradas en la tabla: {len(filas)}")
@@ -98,11 +93,6 @@ def main():
             if len(filas) == 0:
                 raise Exception("No se encontraron filas en la tabla. Posible error de login o cambio en la web.")
             
-            primera_fila_cols = filas[0].query_selector_all("td")
-            print(f"🐞 DEPURACIÓN: La primera fila tiene {len(primera_fila_cols)} columnas.")
-            if len(primera_fila_cols) > 0:
-                print(f"🐞 Contenido de la columna 1: '{primera_fila_cols[0].inner_text().strip()}'")
-
             estado_actual = {}
             caidas = []
             recuperadas = []
@@ -111,8 +101,11 @@ def main():
                 columnas = fila.query_selector_all("td")
                 if len(columnas) >= 7:
                     nombre = columnas[2].inner_text().strip()
+                    
+                    # ============ CORRECCIÓN AQUÍ ============
                     estado_raw = columnas[6].inner_text().strip()
-                    estado = estado_raw.lower()
+                    estado = estado_raw.strip().lower() # Quitamos los espacios al final y pasamos a minúscula
+                    # ========================================
                     
                     if not nombre:
                         continue

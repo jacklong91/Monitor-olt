@@ -5,7 +5,7 @@ import requests
 from playwright.sync_api import sync_playwright
 
 # =========================================================================
-# CONFIGURACIÓN DE OLTs CRÍTICAS (Nuevos Avances)
+# CONFIGURACIÓN DE OLTs CRÍTICAS (Deben estar SIEMPRE en Online)
 # =========================================================================
 OLTS_CRITICAS = [
     "OLT3-N4BDR-ZONA3",
@@ -20,6 +20,16 @@ OLTS_CRITICAS = [
     "OLT2-R2-ZONA1-MGTA",
     "OLT1-N9-R1-ZONA3-MGTA",
     "OLT4-N4BDR-ZONA3"
+]
+
+# =========================================================================
+# CONFIGURACIÓN DE OLTs APAGADAS / SIN TRABAJAR (Siempre en Offline)
+# Solo alertarán si cambian a ONLINE. No molestarán si están caídas.
+# =========================================================================
+OLTS_INACTIVAS_PERMANENTES = [
+    "OLT1-R1-CGNAT1-CRPN",
+    "OLT2-R1-CGNAT1-CRPN",
+    "OLT1-R2-CGNAT1-CRPN"
 ]
 
 def enviar_telegram(mensaje):
@@ -105,10 +115,21 @@ def main():
                     
                     estado_previo = estado_anterior.get(nombre)
                     
+                    # CASO A: OLTs Inactivas Permanentes (Solo reportan si pasan de Offline a Online)
+                    if nombre in OLTS_INACTIVAS_PERMANENTES:
+                        if estado_previo == 'Offline' and estado == 'Online':
+                            recuperadas.append(nombre)
+                        continue # Evitamos que entren a la lógica normal de caídas
+                    
+                    # CASO B: Transición normal de Online a Offline
                     if estado_previo == 'Online' and estado == 'Offline':
                         caidas.append(nombre)
+                    
+                    # CASO C: Transición normal de Offline a Online
                     elif estado_previo == 'Offline' and estado == 'Online':
                         recuperadas.append(nombre)
+                    
+                    # CASO D: OLTs Críticas que aparecen Offline y la memoria estaba vacía/cambiando
                     elif nombre in OLTS_CRITICAS and estado == 'Offline' and estado_previo != 'Offline':
                         if nombre not in caidas:
                             caidas.append(nombre)

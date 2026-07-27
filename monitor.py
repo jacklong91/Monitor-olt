@@ -4,6 +4,17 @@ import time
 import requests
 from playwright.sync_api import sync_playwright
 
+# =========================================================================
+# CONFIGURACIÓN DE OLTs CRÍTICAS (Nuevos Avances)
+# =========================================================================
+# Escribe aquí los nombres EXACTOS de las OLTs que SIEMPRE deben estar Online.
+# Si alguna de estas aparece como 'Offline', el bot enviará la alerta de caída
+# incluso si la memoria del bot se reinició recientemente.
+OLTS_CRITICAS = [
+    # Ejemplo: "OLT-CENTRAL-01",
+    # Ejemplo: "OLT-NORTE-02"
+]
+
 def enviar_telegram(mensaje):
     token = os.environ.get('TG_TOKEN')
     chat_id = os.environ.get('TG_CHAT_ID')
@@ -24,25 +35,17 @@ def cargar_estado_anterior(archivo_estado):
         with open(archivo_estado, "r", encoding="utf-8") as f:
             contenido = f.read().strip()
             if not contenido:
-                print("⚠️ El archivo estado_olts.json estaba vacío. Reiniciando memoria...")
                 return {}
             return json.loads(contenido)
-    except (json.JSONDecodeError, ValueError) as e:
-        print(f"⚠️ El archivo estado_olts.json estaba dañado ({e}). Reiniciando memoria...")
-        return {}
-    except Exception as e:
-        print(f"❌ Error al acceder a JSON: {e}")
+    except Exception:
         return {}
 
 def main():
-    # Volvemos a usar EXACTAMENTE los nombres de tus secretos originales
     url_admin = os.environ.get('URL_ADMIN')
     user_admin = os.environ.get('USER_ADMIN')
     pass_admin = os.environ.get('PASS_ADMIN')
 
     archivo_estado = 'estado_olts.json'
-    
-    # 🛡️ Aplicamos el escudo protector para evitar que el bot muera si el JSON está vacío
     estado_anterior = cargar_estado_anterior(archivo_estado)
 
     tiempo_actual = time.time()
@@ -57,10 +60,8 @@ def main():
         page = context.new_page()
 
         try:
-            print("Iniciando sesión...")
-            # Nos aseguramos de que haya una URL, si no tira error claro
             if not url_admin:
-                raise ValueError("La variable URL_ADMIN está vacía. Revisa los secretos de GitHub.")
+                raise ValueError("La variable URL_ADMIN está vacía.")
                 
             page.goto(url_admin, timeout=60000)
             
@@ -72,7 +73,6 @@ def main():
             caja_password.fill(pass_admin)
             
             page.keyboard.press("Enter")
-            
             page.wait_for_timeout(5000) 
             
             print("Navegando a la lista de OLTs...")
@@ -97,12 +97,21 @@ def main():
                         
                     estado_actual[nombre] = estado
                     
-                    # Verificamos si existe en el estado anterior
-                    if nombre in estado_anterior and isinstance(estado_anterior[nombre], str):
-                        if estado_anterior[nombre] == 'Online' and estado == 'Offline':
+                    estado_previo = estado_anterior.get(nombre)
+                    
+                    # 1. Transición normal: Estaba Online y pasó a Offline
+                    if estado_previo == 'Online' and estado == 'Offline':
+                        caidas.append(nombre)
+                    
+                    # 2. Transición normal: Estaba Offline y pasó a Online
+                    elif estado_previo == 'Offline' and estado == 'Online':
+                        recuperadas.append(nombre)
+                    
+                    # 3. Regla de OLTs Críticas: Si está en la lista de críticas, debe estar Online sí o sí.
+                    # Si aparece Offline y no hay registro previo (o memoria limpia), alerta de inmediato.
+                    elif nombre in OLTS_CRITICAS and estado == 'Offline' and estado_previo != 'Offline':
+                        if nombre not in caidas:
                             caidas.append(nombre)
-                        elif estado_anterior[nombre] == 'Offline' and estado == 'Online':
-                            recuperadas.append(nombre)
             
             estado_actual['ultima_alerta_rutina'] = ultima_alerta_rutina
             estado_actual['bot_reparado_confirmado'] = bot_reparado_confirmado
@@ -112,12 +121,10 @@ def main():
             if recuperadas:
                 enviar_telegram(f"✅ ¡RECUPERACIÓN!\nOLTs en Línea:\n" + "\n".join(recuperadas))
             
-            # AVISO DE FUNCIONAMIENTO
             if not bot_reparado_confirmado:
-                enviar_telegram("✅ AVISO DE FUNCIONAMIENTO: El bot ha sido restaurado exitosamente y está leyendo la tabla de OLTs.")
+                enviar_telegram("✅ AVISO DE FUNCIONAMIENTO: El bot está monitoreando y protegiendo las OLTs correctamente.")
                 estado_actual['bot_reparado_confirmado'] = True
                 
-            # REPORTE 3 HORAS
             if not caidas and not recuperadas:
                 if tiempo_actual - ultima_alerta_rutina >= 10800:
                     enviar_telegram("✅ Reporte de rutina: Sistema activo vigilando. Sin novedad en las OLTs.")
@@ -130,7 +137,7 @@ def main():
 
         except Exception as e:
             print(f"❌ Error en el navegador: {e}")
-            enviar_telegram(f"⚠️ Error temporal en el escaneo de OLTs. Revisa GitHub: {e}")
+            enviar_telegram(f"⚠️ Error temporal en el escaneo de OLTs: {e}")
         finally:
             browser.close()
 

@@ -24,7 +24,12 @@ def enviar_telegram(mensaje):
         cid = cid.strip()
         if not cid: continue
         try:
-            resp = requests.post(url, data={'chat_id': cid, 'text': mensaje}, timeout=10)
+            # Aquí añadimos parse_mode='HTML' para darle formato bonito a los mensajes
+            resp = requests.post(url, data={
+                'chat_id': cid, 
+                'text': mensaje, 
+                'parse_mode': 'HTML'
+            }, timeout=10)
             if resp.status_code == 200:
                 print(f"✅ Enviado a {cid}")
             else:
@@ -49,6 +54,10 @@ def main():
 
     archivo_estado = 'estado_olts.json'
     estado_anterior = cargar_estado_anterior(archivo_estado)
+
+    tiempo_actual = time.time()
+    ultima_alerta_rutina = estado_anterior.get('ultima_alerta_rutina', 0)
+    bot_reparado_confirmado = estado_anterior.get('bot_reparado_confirmado', False)
 
     print("🚀 Iniciando escaneo de OLTs con Playwright...")
 
@@ -81,15 +90,12 @@ def main():
             except Exception:
                 pass
             
-            # ============ CORRECCIÓN DEFINITIVA ============
-            # Esperamos específicamente a que desaparezca el spinner de la columna de estado (Columna 5 en HTML)
             try:
                 print("⏳ Esperando a que desaparezcan los spinners de la columna Estado...")
                 page.wait_for_selector("table tbody tr td:nth-child(5) .spinner-border", state="detached", timeout=60000)
                 print("✅ Spinners de estado desaparecidos. Texto listo para leer.")
             except Exception:
                 print("ℹ️ No se encontraron spinners de estado o ya habían cargado.")
-            # ================================================
             
             page.wait_for_selector("table tbody tr", timeout=45000)
             filas = page.query_selector_all("table tbody tr")
@@ -105,11 +111,7 @@ def main():
             for fila in filas:
                 columnas = fila.query_selector_all("td")
                 if len(columnas) >= 7:
-                    # Nombre (Columna 3 en el HTML, índice 2)
                     nombre = columnas[2].text_content().strip()
-                    
-                    # Estado (Columna 5 en el HTML, índice 4)
-                    # Ahora que esperamos a que el spinner desaparezca, esto leerá "Online" o "Offline"
                     estado_raw = columnas[4].text_content().strip()
                     estado = estado_raw.strip().lower()
                     
@@ -140,17 +142,46 @@ def main():
                         recuperadas.append(nombre)
 
             if not estado_actual:
-                enviar_telegram("⚠️ ERROR CRÍTICO: El bot no logró leer ninguna OLT.")
+                enviar_telegram("⚠️ <b>ERROR CRÍTICO</b>: El bot no logró leer ninguna OLT.")
                 return
             
-            if caidas:
-                enviar_telegram(f"⚠️ ¡ALERTA CRÍTICA!\nOLTs Caídas:\n" + "\n".join(caidas))
-            if recuperadas:
-                enviar_telegram(f"✅ ¡RECUPERACIÓN!\nOLTs en Línea:\n" + "\n".join(recuperadas))
+            estado_actual['ultima_alerta_rutina'] = ultima_alerta_rutina
+            estado_actual['bot_reparado_confirmado'] = bot_reparado_confirmado
             
+            # =============================================
+            # MENSAJES CON ESTILO HTML (ROJOS Y VERDES)
+            # =============================================
+            if caidas:
+                lista_caidas = "\n".join([f"🔴 <b>{olt}</b>" for olt in caidas])
+                enviar_telegram(
+                    f"🚨 <b>⚠️ ALERTA CRÍTICA</b> 🚨\n\n"
+                    f"🔻 <b>OLTs Caídas:</b>\n{lista_caidas}"
+                )
+            if recuperadas:
+                lista_recuperadas = "\n".join([f"🟢 <b>{olt}</b>" for olt in recuperadas])
+                enviar_telegram(
+                    f"✅ <b>¡RECUPERACIÓN!</b> ✅\n\n"
+                    f"🟢 <b>OLTs en Línea:</b>\n{lista_recuperadas}"
+                )
+            
+            # Mensaje de confirmación de arranque
+            if not bot_reparado_confirmado:
+                enviar_telegram(
+                    f"🤖 <b>AVISO DE FUNCIONAMIENTO</b> 🤖\n\n"
+                    f"✅ El bot está monitoreando y protegiendo las OLTs correctamente."
+                )
+                estado_actual['bot_reparado_confirmado'] = True
+                
+            # Reporte de rutina (Cada 3 horas - 10800 segundos)
             if not caidas and not recuperadas:
-                print("ℹ️ No hay cambios de estado. Todo en orden.")
-
+                if tiempo_actual - ultima_alerta_rutina >= 10800:
+                    enviar_telegram(
+                        f"🤖 <b>Reporte de Rutina</b> 🤖\n\n"
+                        f"📊 Sistema activo vigilando.\n"
+                        f"🟢 Sin novedad en las OLTs."
+                    )
+                    estado_actual['ultima_alerta_rutina'] = tiempo_actual
+            
             with open(archivo_estado, 'w', encoding="utf-8") as f:
                 json.dump(estado_actual, f, indent=4)
                 
@@ -159,7 +190,7 @@ def main():
         except Exception as e:
             error_msg = f"⚠️ Error en el bot: {e}"
             print(f"❌ {error_msg}")
-            enviar_telegram(error_msg)
+            enviar_telegram(f"⚠️ <b>Error en el bot</b>\n\n<code>{e}</code>")
         finally:
             browser.close()
 

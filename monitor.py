@@ -98,16 +98,18 @@ def main():
                 if len(columnas) >= 7:
                     nombre = columnas[2].inner_text().strip()
                     
-                    # ================= CORRECCIÓN MÁGICA AQUÍ =================
-                    estado_raw = columnas[6].inner_text().strip()
-                    estado = estado_raw.strip().lower() # Quita espacios y pasa a minúscula
+                    # =========== CORRECCIÓN DEL ÍNDICE DEL ESTADO ===========
+                    # La columna 5 (índice 4) es la que contiene la etiqueta Online/Offline.
+                    estado_raw = columnas[4].inner_text().strip() 
+                    estado = estado_raw.strip().lower()
                     # =========================================================
-                    
-                    print(f"🧪 OLT: {nombre} | Estado leído: '{estado_raw}' -> Procesado: '{estado}'")
                     
                     if not nombre:
                         continue
                         
+                    # Log extra para confirmar que ahora lee bien el texto
+                    print(f"🧪 OLT: {nombre} | Estado leído: '{estado_raw}' -> Procesado: '{estado}'")
+                    
                     estado_actual[nombre] = estado_raw
                     estado_previo = estado_anterior.get(nombre)
                     if isinstance(estado_previo, str):
@@ -138,6 +140,10 @@ def main():
             if recuperadas:
                 enviar_telegram(f"✅ ¡RECUPERACIÓN!\nOLTs en Línea:\n" + "\n".join(recuperadas))
             
+            # Si no hay caídas ni recuperaciones, pero queremos un mensaje de que el bot sigue activo (opcional):
+            if not caidas and not recuperadas:
+                print("ℹ️ No hay cambios de estado. Todo en orden.")
+
             with open(archivo_estado, 'w', encoding="utf-8") as f:
                 json.dump(estado_actual, f, indent=4)
                 

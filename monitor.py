@@ -97,27 +97,34 @@ def main():
                 columnas = fila.query_selector_all("td")
                 if len(columnas) >= 7:
                     
-                    # ==================== LÓGICA ROBUSTA DE ESTADO ====================
                     nombre = columnas[2].inner_text().strip()
                     
-                    # El estado puede estar en diferentes columnas según el HTML
-                    estado_raw = fila.locator("td:nth-child(5)").inner_text().strip()
+                    # ==================== LÓGICA ROBUSTA DE ESTADO CORREGIDA ====================
+                    # Usamos query_selector en lugar de locator para buscar dentro del elemento fila
+                    def obtener_texto_columna(indice):
+                        elemento = fila.query_selector(f"td:nth-child({indice})")
+                        if elemento:
+                            return elemento.inner_text().strip()
+                        return ""
+
+                    estado_raw = obtener_texto_columna(5)
                     col_origen = "5"
                     
                     if not estado_raw:
-                        estado_raw = fila.locator("td:nth-child(6)").inner_text().strip()
+                        estado_raw = obtener_texto_columna(6)
                         col_origen = "6"
                     if not estado_raw:
-                        estado_raw = fila.locator("td:nth-child(7)").inner_text().strip()
+                        estado_raw = obtener_texto_columna(7)
                         col_origen = "7"
                     if not estado_raw:
                         # Último recurso: buscar cualquier etiqueta con clase de estado en la fila
-                        estado_el = fila.locator(".badge, .status, [role='status']").first
-                        estado_raw = estado_el.inner_text().strip()
-                        col_origen = "BADGE/STATUS"
+                        estado_el = fila.query_selector(".badge, .status, [role='status']")
+                        if estado_el:
+                            estado_raw = estado_el.inner_text().strip()
+                            col_origen = "BADGE/STATUS"
                     
                     estado = estado_raw.strip().lower()
-                    # ==================================================================
+                    # ============================================================================
                     
                     if not nombre:
                         continue
@@ -163,8 +170,9 @@ def main():
             print("✅ Escaneo completado exitosamente.")
 
         except Exception as e:
-            print(f"❌ Error: {e}")
-            enviar_telegram(f"⚠️ Error en el bot: {e}")
+            error_msg = f"⚠️ Error en el bot: {e}"
+            print(f"❌ {error_msg}")
+            enviar_telegram(error_msg)
         finally:
             browser.close()
 

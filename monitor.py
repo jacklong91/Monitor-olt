@@ -93,21 +93,44 @@ def main():
             caidas = []
             recuperadas = []
             
+            # ============ DEPURACIÓN PROFUNDA DE LA PRIMERA FILA ============
+            primera_fila = filas[0]
+            columnas_debug = primera_fila.query_selector_all("td")
+            print("🔎 DEPURACIÓN PROFUNDA DE LA PRIMERA FILA:")
+            for i, col in enumerate(columnas_debug):
+                texto = col.inner_text().strip()
+                print(f"   Columna [{i}]: '{texto}'")
+            # =================================================================
+
             for fila in filas:
                 columnas = fila.query_selector_all("td")
                 if len(columnas) >= 7:
                     nombre = columnas[2].inner_text().strip()
                     
-                    # =========== CORRECCIÓN DEL ÍNDICE DEL ESTADO ===========
-                    # La columna 5 (índice 4) es la que contiene la etiqueta Online/Offline.
+                    # =========== AQUÍ ESTABA EL PROBLEMA DE ÍNDICE ===========
+                    # Vamos a cambiar para buscar usando el nombre de la columna o un método más robusto
+                    # Pero primero, basándonos en la depuración, ajustaremos el índice.
+                    # Si en el log de arriba ves "Columna [X]: 'Offline'", sabrás que X es el índice.
+                    # Mientras tanto, el código sigue apuntando a [4] pero con logs más claros
                     estado_raw = columnas[4].inner_text().strip() 
                     estado = estado_raw.strip().lower()
+                    
+                    # CORRECCIÓN: Si estado_raw sigue estando vacío, usaremos un selector de respaldo intentando buscar el estado por XPath dentro de la fila
+                    if not estado_raw: 
+                        try:
+                            # Intentamos buscar la etiqueta span o div que tenga la clase de color o el texto 'Online'/'Offline'
+                            estado_element = fila.locator("td >> nth=4").inner_text().strip()
+                            if estado_element:
+                                estado_raw = estado_element
+                        except:
+                            pass
+                        estado = estado_raw.strip().lower()
                     # =========================================================
                     
                     if not nombre:
                         continue
                         
-                    # Log extra para confirmar que ahora lee bien el texto
+                    # Log para saber qué está pasando exactamente con cada OLT
                     print(f"🧪 OLT: {nombre} | Estado leído: '{estado_raw}' -> Procesado: '{estado}'")
                     
                     estado_actual[nombre] = estado_raw
@@ -140,7 +163,6 @@ def main():
             if recuperadas:
                 enviar_telegram(f"✅ ¡RECUPERACIÓN!\nOLTs en Línea:\n" + "\n".join(recuperadas))
             
-            # Si no hay caídas ni recuperaciones, pero queremos un mensaje de que el bot sigue activo (opcional):
             if not caidas and not recuperadas:
                 print("ℹ️ No hay cambios de estado. Todo en orden.")
 

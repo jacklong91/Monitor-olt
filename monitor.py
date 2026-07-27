@@ -50,10 +50,6 @@ def main():
     archivo_estado = 'estado_olts.json'
     estado_anterior = cargar_estado_anterior(archivo_estado)
 
-    tiempo_actual = time.time()
-    ultima_alerta_rutina = estado_anterior.get('ultima_alerta_rutina', 0)
-    bot_reparado_confirmado = estado_anterior.get('bot_reparado_confirmado', False)
-
     print("🚀 Iniciando escaneo de OLTs con Playwright...")
 
     with sync_playwright() as p:
@@ -91,7 +87,7 @@ def main():
             print(f"🔍 Filas encontradas en la tabla: {len(filas)}")
             
             if len(filas) == 0:
-                raise Exception("No se encontraron filas en la tabla. Posible error de login o cambio en la web.")
+                raise Exception("No se encontraron filas en la tabla.")
             
             estado_actual = {}
             caidas = []
@@ -102,10 +98,12 @@ def main():
                 if len(columnas) >= 7:
                     nombre = columnas[2].inner_text().strip()
                     
-                    # ============ CORRECCIÓN AQUÍ ============
+                    # ================= CORRECCIÓN MÁGICA AQUÍ =================
                     estado_raw = columnas[6].inner_text().strip()
-                    estado = estado_raw.strip().lower() # Quitamos los espacios al final y pasamos a minúscula
-                    # ========================================
+                    estado = estado_raw.strip().lower() # Quita espacios y pasa a minúscula
+                    # =========================================================
+                    
+                    print(f"🧪 OLT: {nombre} | Estado leído: '{estado_raw}' -> Procesado: '{estado}'")
                     
                     if not nombre:
                         continue
@@ -132,26 +130,13 @@ def main():
                         recuperadas.append(nombre)
 
             if not estado_actual:
-                enviar_telegram("⚠️ ERROR CRÍTICO EN EL BOT: El script se ejecutó pero NO logró leer ninguna OLT. Revise el login o los cambios en la web. El estado anterior NO fue modificado.")
-                print("❌ No se guardará el estado porque no se encontraron OLTs válidas.")
+                enviar_telegram("⚠️ ERROR CRÍTICO: El bot no logró leer ninguna OLT.")
                 return
-
-            estado_actual['ultima_alerta_rutina'] = ultima_alerta_rutina
-            estado_actual['bot_reparado_confirmado'] = bot_reparado_confirmado
             
             if caidas:
                 enviar_telegram(f"⚠️ ¡ALERTA CRÍTICA!\nOLTs Caídas:\n" + "\n".join(caidas))
             if recuperadas:
                 enviar_telegram(f"✅ ¡RECUPERACIÓN!\nOLTs en Línea:\n" + "\n".join(recuperadas))
-            
-            if not bot_reparado_confirmado:
-                enviar_telegram("✅ AVISO DE FUNCIONAMIENTO: El bot está monitoreando y protegiendo las OLTs correctamente.")
-                estado_actual['bot_reparado_confirmado'] = True
-                
-            if not caidas and not recuperadas:
-                if tiempo_actual - ultima_alerta_rutina >= 10800:
-                    enviar_telegram("✅ Reporte de rutina: Sistema activo vigilando. Sin novedad en las OLTs.")
-                    estado_actual['ultima_alerta_rutina'] = tiempo_actual
             
             with open(archivo_estado, 'w', encoding="utf-8") as f:
                 json.dump(estado_actual, f, indent=4)
@@ -159,9 +144,8 @@ def main():
             print("✅ Escaneo completado exitosamente.")
 
         except Exception as e:
-            error_msg = f"⚠️ Error durante el escaneo: {e}"
-            print(f"❌ {error_msg}")
-            enviar_telegram(error_msg)
+            print(f"❌ Error: {e}")
+            enviar_telegram(f"⚠️ Error en el bot: {e}")
         finally:
             browser.close()
 

@@ -3,7 +3,7 @@ name: Monitor OLT
 on:
   schedule:
     # Se ejecuta cada 15 minutos.
-    - cron: '*/15 * * * *'
+    - cron: '7,22,37,52 * * * *'
   workflow_dispatch: # Permite ejecutarlo manualmente con un botón
 
 jobs:

@@ -106,34 +106,37 @@ def main():
                 columnas = fila.query_selector_all("td")
                 if len(columnas) >= 7:
                     nombre = columnas[2].inner_text().strip()
-                    estado = columnas[6].inner_text().strip()
+                    estado_raw = columnas[6].inner_text().strip()
+                    estado = estado_raw.lower() # Normalizamos a minúsculas para evitar conflictos de mayúsculas/minúsculas
                     
                     if not nombre:
                         continue
                         
-                    estado_actual[nombre] = estado
+                    estado_actual[nombre] = estado_raw
                     
                     estado_previo = estado_anterior.get(nombre)
+                    if isinstance(estado_previo, str):
+                        estado_previo = estado_previo.lower()
                     
-                    # 1. CASO OLTs Inactivas Permanentes (Solo reportan si pasan de Offline a Online)
+                    # 1. CASO OLTs Inactivas Permanentes (Solo reportan si pasan de offline a online)
                     if nombre in OLTS_INACTIVAS_PERMANENTES:
-                        if estado_previo == 'Offline' and estado == 'Online':
+                        if estado_previo == 'offline' and estado == 'online':
                             recuperadas.append(nombre)
                         continue 
                     
-                    # 2. CASO OLTs Críticas: Si están en la lista y se encuentran en Offline, alertar de inmediato
-                    if nombre in OLTS_CRITICAS and estado == 'Offline':
+                    # 2. CASO OLTs Críticas: Si están en la lista y se encuentran en offline, alertar de inmediato
+                    if nombre in OLTS_CRITICAS and estado == 'offline':
                         if nombre not in caidas:
                             caidas.append(nombre)
                         continue
 
-                    # 3. Transición normal de Online a Offline para las demás
-                    if estado_previo == 'Online' and estado == 'Offline':
+                    # 3. Transición normal de online a offline para las demás
+                    if estado_previo == 'online' and estado == 'offline':
                         if nombre not in caidas:
                             caidas.append(nombre)
                     
-                    # 4. Transición normal de Offline a Online para las demás
-                    elif estado_previo == 'Offline' and estado == 'Online':
+                    # 4. Transición normal de offline a online para las demás
+                    elif estado_previo == 'offline' and estado == 'online':
                         recuperadas.append(nombre)
             
             estado_actual['ultima_alerta_rutina'] = ultima_alerta_rutina

@@ -93,30 +93,36 @@ def main():
             caidas = []
             recuperadas = []
             
-            # ============ DEPURACIÓN QUE AHORA LEERÁ EL HTML REAL ============
-            primera_fila = filas[0]
-            columnas_debug = primera_fila.query_selector_all("td")
-            print("🔎 DEPURACIÓN PROFUNDA DE LA PRIMERA FILA (TEXT_CONTENT y HTML):")
-            for i, col in enumerate(columnas_debug):
-                texto = col.text_content().strip() # <--- Usamos text_content()
-                html = col.inner_html().strip()     # <--- Vemos el HTML interno
-                print(f"   Columna [{i}]: Text='{texto}', HTML='{html}'")
-            # =================================================================
-
             for fila in filas:
                 columnas = fila.query_selector_all("td")
                 if len(columnas) >= 7:
                     
-                    # ========== CORRECCIÓN USANDO TEXT_CONTENT ==========
-                    nombre = columnas[2].text_content().strip()
-                    estado_raw = columnas[4].text_content().strip() 
+                    # ==================== LÓGICA ROBUSTA DE ESTADO ====================
+                    nombre = columnas[2].inner_text().strip()
+                    
+                    # El estado puede estar en diferentes columnas según el HTML
+                    estado_raw = fila.locator("td:nth-child(5)").inner_text().strip()
+                    col_origen = "5"
+                    
+                    if not estado_raw:
+                        estado_raw = fila.locator("td:nth-child(6)").inner_text().strip()
+                        col_origen = "6"
+                    if not estado_raw:
+                        estado_raw = fila.locator("td:nth-child(7)").inner_text().strip()
+                        col_origen = "7"
+                    if not estado_raw:
+                        # Último recurso: buscar cualquier etiqueta con clase de estado en la fila
+                        estado_el = fila.locator(".badge, .status, [role='status']").first
+                        estado_raw = estado_el.inner_text().strip()
+                        col_origen = "BADGE/STATUS"
+                    
                     estado = estado_raw.strip().lower()
-                    # ===================================================
+                    # ==================================================================
                     
                     if not nombre:
                         continue
                         
-                    print(f"🧪 OLT: {nombre} | Estado leído: '{estado_raw}' -> Procesado: '{estado}'")
+                    print(f"🧪 OLT: {nombre} | Estado leído: '{estado_raw}' (Col {col_origen}) -> Procesado: '{estado}'")
                     
                     estado_actual[nombre] = estado_raw
                     estado_previo = estado_anterior.get(nombre)

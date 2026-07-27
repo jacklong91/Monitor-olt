@@ -93,11 +93,19 @@ def main():
             
             print("Navegando a la lista de OLTs...")
             page.goto("https://wave.adminolt.com/olt/list/", timeout=60000)
-            page.wait_for_timeout(10000) 
             
+            # Espera explícita robusta para asegurar que la tabla cargue por completo
+            try:
+                page.wait_for_selector("table tbody tr", timeout=30000)
+            except Exception:
+                print("⚠️ Advertencia: La tabla tardó más de lo esperado en aparecer.")
+
             filas = page.query_selector_all("table tbody tr")
             print(f"🔍 Filas encontradas en la tabla: {len(filas)}")
             
+            if len(filas) == 0:
+                enviar_telegram("⚠️ Advertencia: El bot escaneó AdminOLT pero no encontró filas en la tabla. Posible retraso de carga o cambio en la web.")
+
             estado_actual = {}
             caidas = []
             recuperadas = []
@@ -107,7 +115,7 @@ def main():
                 if len(columnas) >= 7:
                     nombre = columnas[2].inner_text().strip()
                     estado_raw = columnas[6].inner_text().strip()
-                    estado = estado_raw.lower() # Normalizamos a minúsculas para evitar conflictos de mayúsculas/minúsculas
+                    estado = estado_raw.lower()
                     
                     if not nombre:
                         continue

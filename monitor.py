@@ -93,44 +93,29 @@ def main():
             caidas = []
             recuperadas = []
             
-            # ============ DEPURACIÓN PROFUNDA DE LA PRIMERA FILA ============
+            # ============ DEPURACIÓN QUE AHORA LEERÁ EL HTML REAL ============
             primera_fila = filas[0]
             columnas_debug = primera_fila.query_selector_all("td")
-            print("🔎 DEPURACIÓN PROFUNDA DE LA PRIMERA FILA:")
+            print("🔎 DEPURACIÓN PROFUNDA DE LA PRIMERA FILA (TEXT_CONTENT y HTML):")
             for i, col in enumerate(columnas_debug):
-                texto = col.inner_text().strip()
-                print(f"   Columna [{i}]: '{texto}'")
+                texto = col.text_content().strip() # <--- Usamos text_content()
+                html = col.inner_html().strip()     # <--- Vemos el HTML interno
+                print(f"   Columna [{i}]: Text='{texto}', HTML='{html}'")
             # =================================================================
 
             for fila in filas:
                 columnas = fila.query_selector_all("td")
                 if len(columnas) >= 7:
-                    nombre = columnas[2].inner_text().strip()
                     
-                    # =========== AQUÍ ESTABA EL PROBLEMA DE ÍNDICE ===========
-                    # Vamos a cambiar para buscar usando el nombre de la columna o un método más robusto
-                    # Pero primero, basándonos en la depuración, ajustaremos el índice.
-                    # Si en el log de arriba ves "Columna [X]: 'Offline'", sabrás que X es el índice.
-                    # Mientras tanto, el código sigue apuntando a [4] pero con logs más claros
-                    estado_raw = columnas[4].inner_text().strip() 
+                    # ========== CORRECCIÓN USANDO TEXT_CONTENT ==========
+                    nombre = columnas[2].text_content().strip()
+                    estado_raw = columnas[4].text_content().strip() 
                     estado = estado_raw.strip().lower()
-                    
-                    # CORRECCIÓN: Si estado_raw sigue estando vacío, usaremos un selector de respaldo intentando buscar el estado por XPath dentro de la fila
-                    if not estado_raw: 
-                        try:
-                            # Intentamos buscar la etiqueta span o div que tenga la clase de color o el texto 'Online'/'Offline'
-                            estado_element = fila.locator("td >> nth=4").inner_text().strip()
-                            if estado_element:
-                                estado_raw = estado_element
-                        except:
-                            pass
-                        estado = estado_raw.strip().lower()
-                    # =========================================================
+                    # ===================================================
                     
                     if not nombre:
                         continue
                         
-                    # Log para saber qué está pasando exactamente con cada OLT
                     print(f"🧪 OLT: {nombre} | Estado leído: '{estado_raw}' -> Procesado: '{estado}'")
                     
                     estado_actual[nombre] = estado_raw

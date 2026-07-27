@@ -79,10 +79,19 @@ def main():
                 page.wait_for_selector("text=Cargando...", state="detached", timeout=60000)
                 print("✅ El mensaje de 'Cargando...' ha desaparecido.")
             except Exception:
-                print("ℹ️ No se encontró el mensaje de carga, la tabla ya podría estar lista.")
+                pass
+            
+            # ============ CORRECCIÓN DEFINITIVA ============
+            # Esperamos específicamente a que desaparezca el spinner de la columna de estado (Columna 5 en HTML)
+            try:
+                print("⏳ Esperando a que desaparezcan los spinners de la columna Estado...")
+                page.wait_for_selector("table tbody tr td:nth-child(5) .spinner-border", state="detached", timeout=60000)
+                print("✅ Spinners de estado desaparecidos. Texto listo para leer.")
+            except Exception:
+                print("ℹ️ No se encontraron spinners de estado o ya habían cargado.")
+            # ================================================
             
             page.wait_for_selector("table tbody tr", timeout=45000)
-            
             filas = page.query_selector_all("table tbody tr")
             print(f"🔍 Filas encontradas en la tabla: {len(filas)}")
             
@@ -96,40 +105,18 @@ def main():
             for fila in filas:
                 columnas = fila.query_selector_all("td")
                 if len(columnas) >= 7:
+                    # Nombre (Columna 3 en el HTML, índice 2)
+                    nombre = columnas[2].text_content().strip()
                     
-                    nombre = columnas[2].inner_text().strip()
-                    
-                    # ==================== LÓGICA ROBUSTA DE ESTADO CORREGIDA ====================
-                    # Usamos query_selector en lugar de locator para buscar dentro del elemento fila
-                    def obtener_texto_columna(indice):
-                        elemento = fila.query_selector(f"td:nth-child({indice})")
-                        if elemento:
-                            return elemento.inner_text().strip()
-                        return ""
-
-                    estado_raw = obtener_texto_columna(5)
-                    col_origen = "5"
-                    
-                    if not estado_raw:
-                        estado_raw = obtener_texto_columna(6)
-                        col_origen = "6"
-                    if not estado_raw:
-                        estado_raw = obtener_texto_columna(7)
-                        col_origen = "7"
-                    if not estado_raw:
-                        # Último recurso: buscar cualquier etiqueta con clase de estado en la fila
-                        estado_el = fila.query_selector(".badge, .status, [role='status']")
-                        if estado_el:
-                            estado_raw = estado_el.inner_text().strip()
-                            col_origen = "BADGE/STATUS"
-                    
+                    # Estado (Columna 5 en el HTML, índice 4)
+                    # Ahora que esperamos a que el spinner desaparezca, esto leerá "Online" o "Offline"
+                    estado_raw = columnas[4].text_content().strip()
                     estado = estado_raw.strip().lower()
-                    # ============================================================================
                     
                     if not nombre:
                         continue
                         
-                    print(f"🧪 OLT: {nombre} | Estado leído: '{estado_raw}' (Col {col_origen}) -> Procesado: '{estado}'")
+                    print(f"🧪 OLT: {nombre} | Estado leído: '{estado_raw}' -> Procesado: '{estado}'")
                     
                     estado_actual[nombre] = estado_raw
                     estado_previo = estado_anterior.get(nombre)

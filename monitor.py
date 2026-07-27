@@ -7,12 +7,19 @@ from playwright.sync_api import sync_playwright
 # =========================================================================
 # CONFIGURACIÓN DE OLTs CRÍTICAS (Nuevos Avances)
 # =========================================================================
-# Escribe aquí los nombres EXACTOS de las OLTs que SIEMPRE deben estar Online.
-# Si alguna de estas aparece como 'Offline', el bot enviará la alerta de caída
-# incluso si la memoria del bot se reinició recientemente.
 OLTS_CRITICAS = [
-    # Ejemplo: "OLT-CENTRAL-01",
-    # Ejemplo: "OLT-NORTE-02"
+    "OLT3-N4BDR-ZONA3",
+    "OLT4-Z2-VENETUR",
+    "OLT6-ZONA1",
+    "OLT1-N5BDPZ-ZONA3",
+    "OLT2-N5BDPZ-ZONA3",
+    "OLT1-R3-ZONA1",
+    "OLT2-R3-ZONA1",
+    "OLT2-Z2-ATAMO",
+    "OLT5-N4BDR-ZONA3",
+    "OLT2-R2-ZONA1-MGTA",
+    "OLT1-N9-R1-ZONA3-MGTA",
+    "OLT4-N4BDR-ZONA3"
 ]
 
 def enviar_telegram(mensaje):
@@ -27,7 +34,6 @@ def enviar_telegram(mensaje):
         requests.post(url, data={'chat_id': cid.strip(), 'text': mensaje})
 
 def cargar_estado_anterior(archivo_estado):
-    """Carga la memoria guardada protegiendo el script si el JSON está vacío o corrupto."""
     if not os.path.exists(archivo_estado):
         print("ℹ️ No existe estado_olts.json. Se creará uno nuevo.")
         return {}
@@ -99,16 +105,10 @@ def main():
                     
                     estado_previo = estado_anterior.get(nombre)
                     
-                    # 1. Transición normal: Estaba Online y pasó a Offline
                     if estado_previo == 'Online' and estado == 'Offline':
                         caidas.append(nombre)
-                    
-                    # 2. Transición normal: Estaba Offline y pasó a Online
                     elif estado_previo == 'Offline' and estado == 'Online':
                         recuperadas.append(nombre)
-                    
-                    # 3. Regla de OLTs Críticas: Si está en la lista de críticas, debe estar Online sí o sí.
-                    # Si aparece Offline y no hay registro previo (o memoria limpia), alerta de inmediato.
                     elif nombre in OLTS_CRITICAS and estado == 'Offline' and estado_previo != 'Offline':
                         if nombre not in caidas:
                             caidas.append(nombre)

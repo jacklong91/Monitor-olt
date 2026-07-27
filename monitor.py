@@ -78,15 +78,26 @@ def main():
             print("📋 Navegando a la lista de OLTs...")
             page.goto("https://wave.adminolt.com/olt/list/", timeout=60000)
             
+            # ============ CORRECCIÓN DE CARGA DINÁMICA ============
+            print("⏳ Esperando a que la tabla cargue los datos reales...")
+            # Espera a que el texto "Cargando..." desaparezca
+            try:
+                page.wait_for_selector("text=Cargando...", state="detached", timeout=60000)
+                print("✅ El mensaje de 'Cargando...' ha desaparecido.")
+            except Exception:
+                # Si la tabla nunca tuvo ese texto, continuamos
+                print("ℹ️ No se encontró el mensaje de carga, la tabla ya podría estar lista.")
+            
+            # Ahora sí, esperamos a que las filas de la tabla estén presentes
             page.wait_for_selector("table tbody tr", timeout=45000)
+            # =======================================================
+            
             filas = page.query_selector_all("table tbody tr")
             print(f"🔍 Filas encontradas en la tabla: {len(filas)}")
             
-            # 🔴 CORRECCIÓN NUEVA: Validación robusta
             if len(filas) == 0:
                 raise Exception("No se encontraron filas en la tabla. Posible error de login o cambio en la web.")
             
-            # Imprimir la primera fila para depurar (te servirá para entender qué está leyendo)
             primera_fila_cols = filas[0].query_selector_all("td")
             print(f"🐞 DEPURACIÓN: La primera fila tiene {len(primera_fila_cols)} columnas.")
             if len(primera_fila_cols) > 0:
@@ -111,7 +122,6 @@ def main():
                     if isinstance(estado_previo, str):
                         estado_previo = estado_previo.lower()
                     
-                    # Lógica de filtros
                     if nombre in OLTS_INACTIVAS_PERMANENTES:
                         if estado_previo == 'offline' and estado == 'online':
                             recuperadas.append(nombre)
@@ -128,13 +138,11 @@ def main():
                     elif estado_previo == 'offline' and estado == 'online':
                         recuperadas.append(nombre)
 
-            # 🛑 Si no se encontró NINGUNA OLT válida (estado_actual vacío), NO guardamos el nuevo estado
             if not estado_actual:
                 enviar_telegram("⚠️ ERROR CRÍTICO EN EL BOT: El script se ejecutó pero NO logró leer ninguna OLT. Revise el login o los cambios en la web. El estado anterior NO fue modificado.")
                 print("❌ No se guardará el estado porque no se encontraron OLTs válidas.")
-                return # Salimos sin sobrescribir el JSON
+                return
 
-            # Si todo salió bien, recién aquí actualizamos las variables de estado
             estado_actual['ultima_alerta_rutina'] = ultima_alerta_rutina
             estado_actual['bot_reparado_confirmado'] = bot_reparado_confirmado
             

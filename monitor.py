@@ -4,9 +4,6 @@ import time
 import requests
 from playwright.sync_api import sync_playwright
 
-# =========================================================================
-# CONFIGURACIÓN DE OLTs
-# =========================================================================
 OLTS_CRITICAS = [
     "OLT3-N4BDR-ZONA3", "OLT4-Z2-VENETUR", "OLT6-ZONA1", "OLT1-N5BDPZ-ZONA3",
     "OLT2-N5BDPZ-ZONA3", "OLT1-R3-ZONA1", "OLT2-R3-ZONA1", "OLT2-Z2-ATAMO",
@@ -19,56 +16,36 @@ OLTS_INACTIVAS_PERMANENTES = [
 def enviar_telegram(mensaje):
     token = os.environ.get('TG_TOKEN')
     chat_id = os.environ.get('TG_CHAT_ID')
-    
     if not token or not chat_id:
-        print("❌ ERROR: Faltan las variables TG_TOKEN o TG_CHAT_ID en el entorno.")
+        print("❌ Faltan TG_TOKEN o TG_CHAT_ID.")
         return False
-
     url = f"https://api.telegram.org/bot{token}/sendMessage"
-    exito = False
-
     for cid in chat_id.split(','):
         cid = cid.strip()
-        if not cid:
-            continue
+        if not cid: continue
         try:
-            print(f"📤 Intentando enviar mensaje a {cid}...")
             resp = requests.post(url, data={'chat_id': cid, 'text': mensaje}, timeout=10)
             if resp.status_code == 200:
-                print(f"✅ Mensaje enviado correctamente a {cid}")
-                exito = True
+                print(f"✅ Enviado a {cid}")
             else:
-                print(f"❌ Telegram devolvió error {resp.status_code}: {resp.text}")
+                print(f"❌ Error HTTP {resp.status_code}: {resp.text}")
         except Exception as e:
-            print(f"❌ Error de conexión al enviar a {cid}: {e}")
-    return exito
+            print(f"❌ Excepción: {e}")
 
 def cargar_estado_anterior(archivo_estado):
     if not os.path.exists(archivo_estado):
-        print("ℹ️ No existe estado_olts.json. Se creará uno nuevo.")
         return {}
     try:
         with open(archivo_estado, "r", encoding="utf-8") as f:
             contenido = f.read().strip()
-            if not contenido:
-                return {}
-            return json.loads(contenido)
-    except Exception as e:
-        print(f"⚠️ Error al leer el JSON, se reiniciará el estado: {e}")
+            return json.loads(contenido) if contenido else {}
+    except Exception:
         return {}
 
 def main():
-    print("🚀 Iniciando escaneo de OLTs con Playwright...")
-    
-    # Variables de entorno
     url_admin = os.environ.get('URL_ADMIN')
     user_admin = os.environ.get('USER_ADMIN')
     pass_admin = os.environ.get('PASS_ADMIN')
-
-    if not url_admin or not user_admin or not pass_admin:
-        print("❌ Faltan variables de entorno de AdminOLT (URL_ADMIN, USER_ADMIN, PASS_ADMIN)")
-        enviar_telegram("⚠️ ERROR CRÍTICO: Faltan credenciales de AdminOLT en el entorno.")
-        return
 
     archivo_estado = 'estado_olts.json'
     estado_anterior = cargar_estado_anterior(archivo_estado)
@@ -77,8 +54,9 @@ def main():
     ultima_alerta_rutina = estado_anterior.get('ultima_alerta_rutina', 0)
     bot_reparado_confirmado = estado_anterior.get('bot_reparado_confirmado', False)
 
+    print("🚀 Iniciando escaneo de OLTs con Playwright...")
+
     with sync_playwright() as p:
-        # Usamos un User-Agent real para evitar bloqueos por bot
         browser = p.chromium.launch(headless=True)
         context = browser.new_context(user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
         page = context.new_page()
@@ -87,7 +65,6 @@ def main():
             print("🔐 Navegando a la página de login...")
             page.goto(url_admin, timeout=60000)
             
-            # Login
             caja_usuario = page.locator("input[placeholder*='Usuario'], input[name='username'], input[type='text']").first
             caja_usuario.wait_for(state="visible", timeout=60000)
             caja_usuario.fill(user_admin)
@@ -101,14 +78,19 @@ def main():
             print("📋 Navegando a la lista de OLTs...")
             page.goto("https://wave.adminolt.com/olt/list/", timeout=60000)
             
-            # Esperar a que cargue la tabla (usamos un selector amplio por si cambia)
             page.wait_for_selector("table tbody tr", timeout=45000)
             filas = page.query_selector_all("table tbody tr")
             print(f"🔍 Filas encontradas en la tabla: {len(filas)}")
             
+            # 🔴 CORRECCIÓN NUEVA: Validación robusta
             if len(filas) == 0:
-                enviar_telegram("⚠️ Advertencia: El bot escaneó AdminOLT pero no encontró filas. Posible retraso o cambio en la web.")
-                return # Salimos para no guardar un estado incorrecto
+                raise Exception("No se encontraron filas en la tabla. Posible error de login o cambio en la web.")
+            
+            # Imprimir la primera fila para depurar (te servirá para entender qué está leyendo)
+            primera_fila_cols = filas[0].query_selector_all("td")
+            print(f"🐞 DEPURACIÓN: La primera fila tiene {len(primera_fila_cols)} columnas.")
+            if len(primera_fila_cols) > 0:
+                print(f"🐞 Contenido de la columna 1: '{primera_fila_cols[0].inner_text().strip()}'")
 
             estado_actual = {}
             caidas = []
@@ -129,53 +111,54 @@ def main():
                     if isinstance(estado_previo, str):
                         estado_previo = estado_previo.lower()
                     
-                    # OLTs INACTIVAS PERMANENTES (Solo reportan OFF -> ON)
+                    # Lógica de filtros
                     if nombre in OLTS_INACTIVAS_PERMANENTES:
                         if estado_previo == 'offline' and estado == 'online':
                             recuperadas.append(nombre)
                         continue 
                     
-                    # OLTs CRÍTICAS (Si están offline, alertan inmediatamente)
                     if nombre in OLTS_CRITICAS and estado == 'offline':
                         if nombre not in caidas:
                             caidas.append(nombre)
                         continue
 
-                    # Transiciones normales
                     if estado_previo == 'online' and estado == 'offline':
                         if nombre not in caidas:
                             caidas.append(nombre)
                     elif estado_previo == 'offline' and estado == 'online':
                         recuperadas.append(nombre)
-            
+
+            # 🛑 Si no se encontró NINGUNA OLT válida (estado_actual vacío), NO guardamos el nuevo estado
+            if not estado_actual:
+                enviar_telegram("⚠️ ERROR CRÍTICO EN EL BOT: El script se ejecutó pero NO logró leer ninguna OLT. Revise el login o los cambios en la web. El estado anterior NO fue modificado.")
+                print("❌ No se guardará el estado porque no se encontraron OLTs válidas.")
+                return # Salimos sin sobrescribir el JSON
+
+            # Si todo salió bien, recién aquí actualizamos las variables de estado
             estado_actual['ultima_alerta_rutina'] = ultima_alerta_rutina
             estado_actual['bot_reparado_confirmado'] = bot_reparado_confirmado
             
-            # --- ENVÍO DE ALERTAS ---
             if caidas:
                 enviar_telegram(f"⚠️ ¡ALERTA CRÍTICA!\nOLTs Caídas:\n" + "\n".join(caidas))
             if recuperadas:
                 enviar_telegram(f"✅ ¡RECUPERACIÓN!\nOLTs en Línea:\n" + "\n".join(recuperadas))
             
-            # Reporte de confirmación de arranque (si es la primera vez o se reinició)
             if not bot_reparado_confirmado:
                 enviar_telegram("✅ AVISO DE FUNCIONAMIENTO: El bot está monitoreando y protegiendo las OLTs correctamente.")
                 estado_actual['bot_reparado_confirmado'] = True
                 
-            # Reporte de rutina (cada 3 horas si no hay cambios)
             if not caidas and not recuperadas:
                 if tiempo_actual - ultima_alerta_rutina >= 10800:
                     enviar_telegram("✅ Reporte de rutina: Sistema activo vigilando. Sin novedad en las OLTs.")
                     estado_actual['ultima_alerta_rutina'] = tiempo_actual
             
-            # Guardar nuevo estado
             with open(archivo_estado, 'w', encoding="utf-8") as f:
                 json.dump(estado_actual, f, indent=4)
                 
             print("✅ Escaneo completado exitosamente.")
 
         except Exception as e:
-            error_msg = f"⚠️ Error temporal en el escaneo de OLTs: {e}"
+            error_msg = f"⚠️ Error durante el escaneo: {e}"
             print(f"❌ {error_msg}")
             enviar_telegram(error_msg)
         finally:

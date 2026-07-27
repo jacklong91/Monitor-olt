@@ -1,121 +1,199 @@
 import os
 import json
-import time
 import requests
-from playwright.sync_api import sync_playwright
+from bs4 import BeautifulSoup
+
+# ==========================================
+# CONFIGURACIÓN (Variables de Entorno / Secrets)
+# ==========================================
+ADMINOLT_URL = os.environ.get("ADMINOLT_URL", "https://adminolt.com").rstrip('/')
+USERNAME = os.environ.get("ADMINOLT_USER")
+PASSWORD = os.environ.get("ADMINOLT_PASS")
+TELEGRAM_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
+TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID")
+
+ARCHIVO_ESTADO = "estado_olts.json"
+
 
 def enviar_telegram(mensaje):
-    token = os.environ.get('TG_TOKEN')
-    chat_id = os.environ.get('TG_CHAT_ID')
-    if not token or not chat_id:
-        print("Falta el token o chat id de Telegram.")
+    """Envía un mensaje de notificación a Telegram."""
+    if not TELEGRAM_TOKEN or not TELEGRAM_CHAT_ID:
+        print("⚠️ Advertencia: TELEGRAM_BOT_TOKEN o TELEGRAM_CHAT_ID no configurados.")
         return
-    url = f"https://api.telegram.org/bot{token}/sendMessage"
-    
-    for cid in chat_id.split(','):
-        requests.post(url, data={'chat_id': cid.strip(), 'text': mensaje})
+
+    url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
+    payload = {
+        "chat_id": TELEGRAM_CHAT_ID,
+        "text": mensaje,
+        "parse_mode": "HTML"
+    }
+    try:
+        r = requests.post(url, json=payload, timeout=15)
+        r.raise_for_status()
+        print("✉️ Notificación enviada a Telegram exitosamente.")
+    except Exception as e:
+        print(f"❌ Error al enviar mensaje a Telegram: {e}")
+
+
+def cargar_estado_anterior():
+    """Carga la memoria guardada protegiendo el script si el JSON está vacío o corrupto."""
+    if not os.path.exists(ARCHIVO_ESTADO):
+        print("ℹ️ No existe estado_olts.json. Se creará uno nuevo.")
+        return {}
+
+    try:
+        with open(ARCHIVO_ESTADO, "r", encoding="utf-8") as f:
+            contenido = f.read().strip()
+            if not contenido:
+                print("⚠️ El archivo estado_olts.json estaba vacío. Reiniciando memoria...")
+                return {}
+            return json.loads(contenido)
+    except (json.JSONDecodeError, ValueError) as e:
+        print(f"⚠️ El archivo estado_olts.json estaba dañado ({e}). Reiniciando memoria...")
+        return {}
+    except Exception as e:
+        print(f"❌ Error al acceder a {ARCHIVO_ESTADO}: {e}")
+        return {}
+
+
+def guardar_estado_actual(estado):
+    """Guarda el estado actual de las OLTs en estado_olts.json."""
+    try:
+        with open(ARCHIVO_ESTADO, "w", encoding="utf-8") as f:
+            json.dump(estado, f, indent=4, ensure_ascii=False)
+        print("💾 Estado actual guardado correctamente en estado_olts.json.")
+    except Exception as e:
+        print(f"❌ Error guardando estado en JSON: {e}")
+
+
+def obtener_estado_olts_adminolt():
+    """Realiza el inicio de sesión en AdminOLT y escanea el estado de todas las OLTs."""
+    session = requests.Session()
+    session.headers.update({
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36"
+    })
+
+    login_page_url = f"{ADMINOLT_URL}/login/"
+    try:
+        res = session.get(login_page_url, timeout=20)
+        soup = BeautifulSoup(res.text, "html.parser")
+        
+        # Extracción del token CSRF si la plataforma lo requiere
+        csrf_input = soup.find("input", {"name": "csrfmiddlewaretoken"})
+        csrf_token = csrf_input["value"] if csrf_input else ""
+
+        login_data = {
+            "username": USERNAME,
+            "password": PASSWORD,
+            "csrfmiddlewaretoken": csrf_token
+        }
+        
+        headers_login = {"Referer": login_page_url}
+        resp_post = session.post(login_page_url, data=login_data, headers=headers_login, timeout=20)
+
+        if "login" in resp_post.url.lower() and resp_post.status_code == 200:
+            print("❌ Error de inicio de sesión: Revisa tus credenciales (ADMINOLT_USER / ADMINOLT_PASS).")
+            return None
+
+    except Exception as e:
+        print(f"❌ Error conectando a AdminOLT durante el login: {e}")
+        return None
+
+    # Escaneo de la página del dashboard / lista de OLTs
+    olts_url = f"{ADMINOLT_URL}/olt/"
+    try:
+        r = session.get(olts_url, timeout=20)
+        soup = BeautifulSoup(r.text, "html.parser")
+        
+        estado_actual = {}
+        
+        # Búsqueda de filas/tarjetas de OLTs
+        # (Ajusta los selectores según el HTML exacto si AdminOLT actualiza la estructura)
+        filas = soup.find_all(["tr", "div"], class_=lambda c: c and ("olt" in c.lower() or "item" in c.lower()))
+        
+        if not filas:
+            # Búsqueda alternativa general si no coinciden las clases específicas
+            filas = soup.find_all("tr")
+
+        for fila in filas:
+            texto_fila = fila.get_text()
+            if "OLT" in texto_fila:
+                # Detección de nombre y estado (Online / Offline)
+                columnas = fila.find_all(["td", "div"])
+                if len(columnas) >= 2:
+                    nombre = columnas[0].get_text(strip=True)
+                    
+                    # Detección mediante clases CSS de badges o texto explicativo
+                    badge_rojo = fila.find(class_=lambda c: c and ("danger" in c or "red" in c or "offline" in c))
+                    badge_verde = fila.find(class_=lambda c: c and ("success" in c or "green" in c or "online" in c))
+
+                    if badge_rojo or "offline" in texto_fila.lower() or "caida" in texto_fila.lower():
+                        estado_actual[nombre] = "Offline"
+                    elif badge_verde or "online" in texto_fila.lower():
+                        estado_actual[nombre] = "Online"
+
+        print(f"🔍 Escaneo completado. OLTs encontradas: {len(estado_actual)}")
+        return estado_actual
+
+    except Exception as e:
+        print(f"❌ Error extrayendo información de AdminOLT: {e}")
+        return None
+
 
 def main():
-    url_admin = os.environ.get('URL_ADMIN')
-    user_admin = os.environ.get('USER_ADMIN')
-    pass_admin = os.environ.get('PASS_ADMIN')
+    print("🚀 Iniciando monitor de OLTs...")
+    
+    estado_anterior = cargar_estado_anterior()
+    estado_actual = obtener_estado_olts_adminolt()
 
-    archivo_estado = 'estado_olts.json'
-    estado_anterior = {}
-    if os.path.exists(archivo_estado):
-        with open(archivo_estado, 'r') as f:
-            estado_anterior = json.load(f)
+    if estado_actual is None:
+        print("⚠️ No se pudo obtener el estado actual. Cancelando proceso para no sobreescribir memoria.")
+        return
 
-    tiempo_actual = time.time()
-    ultima_alerta_rutina = estado_anterior.get('ultima_alerta_rutina', 0)
-    # Variable para saber si ya te envió el mensaje de que fue reparado
-    bot_reparado_confirmado = estado_anterior.get('bot_reparado_confirmado', False)
+    # Si es la primera vez que corre y no había memoria anterior
+    if not estado_anterior:
+        print("📝 Primera ejecución exitosa. Registrando estado base...")
+        guardar_estado_actual(estado_actual)
+        
+        # Reportar si hay OLTs caídas desde el primer inicio
+        caidas_iniciales = [olt for olt, est in estado_actual.items() if est == "Offline"]
+        if caidas_iniciales:
+            msg = "🚨 <b>ALERTA DE INICIO - OLTs CAÍDAS DETECTADAS:</b>\n\n"
+            for olt in caidas_iniciales:
+                msg += f"• 🔴 <b>{olt}</b> está Offline\n"
+            enviar_telegram(msg)
+        return
 
-    print("Iniciando escaneo...")
+    # Comparar cambios entre el escaneo anterior y el actual
+    cambios_detectados = False
+    
+    for olt, estado_nuevo in estado_actual.items():
+        estado_viejo = estado_anterior.get(olt)
 
-    with sync_playwright() as p:
-        browser = p.chromium.launch(headless=True)
-        context = browser.new_context(user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/110.0.0.0 Safari/537.36")
-        page = context.new_page()
+        # 1. Detectar CAÍDA (Online -> Offline)
+        if estado_viejo == "Online" and estado_nuevo == "Offline":
+            msg = f"🚨 <b>ALERTA OLT CAÍDA</b> 🚨\n\n🔴 La OLT <b>{olt}</b> ha perdido conexión."
+            enviar_telegram(msg)
+            cambios_detectados = True
 
-        try:
-            print("Iniciando sesión...")
-            page.goto(url_admin, timeout=60000)
-            
-            # 1. BUSCAMOS POR EL TEXTO EXACTO DE LA IMAGEN QUE ME PASASTE
-            # Busca la caja que contenga la palabra "Usuario"
-            caja_usuario = page.locator("input[placeholder*='Usuario'], input[name='username'], input[type='text']").first
-            caja_usuario.wait_for(state="visible", timeout=60000)
-            caja_usuario.fill(user_admin)
-            
-            # Busca la caja que contenga la palabra "Contraseña"
-            caja_password = page.locator("input[placeholder*='Contraseña'], input[name='password'], input[type='password']").first
-            caja_password.fill(pass_admin)
-            
-            page.keyboard.press("Enter")
-            
-            # Esperamos 5 segundos
-            page.wait_for_timeout(5000) 
-            
-            print("Navegando a la lista de OLTs...")
-            page.goto("https://wave.adminolt.com/olt/list/", timeout=60000)
-            page.wait_for_timeout(10000) 
-            
-            filas = page.query_selector_all("table tbody tr")
-            
-            estado_actual = {}
-            caidas = []
-            recuperadas = []
-            
-            for fila in filas:
-                columnas = fila.query_selector_all("td")
-                if len(columnas) >= 7:
-                    nombre = columnas[2].inner_text().strip()
-                    estado = columnas[6].inner_text().strip()
-                    
-                    if not nombre:
-                        continue
-                        
-                    estado_actual[nombre] = estado
-                    
-                    if nombre in estado_anterior:
-                        if estado_anterior[nombre] == 'Online' and estado == 'Offline':
-                            caidas.append(nombre)
-                        elif estado_anterior[nombre] == 'Offline' and estado == 'Online':
-                            recuperadas.append(nombre)
-            
-            estado_actual['ultima_alerta_rutina'] = ultima_alerta_rutina
-            estado_actual['bot_reparado_confirmado'] = bot_reparado_confirmado
-            
-            if caidas:
-                enviar_telegram(f"⚠️ ¡ALERTA CRÍTICA!\nOLTs Caídas:\n" + "\n".join(caidas))
-            if recuperadas:
-                enviar_telegram(f"✅ ¡RECUPERACIÓN!\nOLTs en Línea:\n" + "\n".join(recuperadas))
-            
-            # === 2. TU AVISO DE FUNCIONAMIENTO ===
-            # Si logra llegar hasta aquí, te enviará este mensaje a Telegram de inmediato.
-            if not bot_reparado_confirmado:
-                enviar_telegram("✅ AVISO DE FUNCIONAMIENTO: El bot fue reparado. Ha logrado iniciar sesión exitosamente y está leyendo la tabla de OLTs.")
-                estado_actual['bot_reparado_confirmado'] = True
-                
-            # Tu reporte de rutina cada 3 horas
-            if not caidas and not recuperadas:
-                if tiempo_actual - ultima_alerta_rutina >= 10800:
-                    enviar_telegram("✅ Reporte de rutina: Sistema activo vigilando. Sin novedad en las OLTs.")
-                    estado_actual['ultima_alerta_rutina'] = tiempo_actual
-            
-            # Guardamos la información
-            with open(archivo_estado, 'w') as f:
-                json.dump(estado_actual, f)
-                
-            print("Escaneo completado exitosamente.")
+        # 2. Detectar RECUPERACIÓN (Offline -> Online)
+        elif estado_viejo == "Offline" and estado_nuevo == "Online":
+            msg = f"✅ <b>RESTAURACIÓN OLT</b> ✅\n\n🟢 La OLT <b>{olt}</b> vuelve a estar Online."
+            enviar_telegram(msg)
+            cambios_detectados = True
 
-        except Exception as e:
-            print(f"Error en el navegador: {e}")
-            # 3. SI HAY UN ERROR, AHORA TE LO AVISARÁ POR TELEGRAM
-            enviar_telegram(f"⚠️ El bot se atascó o falló. Revisa GitHub. Error detectado: {e}")
-        finally:
-            browser.close()
+        # 3. Nueva OLT añadida que entra en estado caida
+        elif estado_viejo is None and estado_nuevo == "Offline":
+            msg = f"⚠️ <b>NUEVA OLT DETECTADA (OFFLINE)</b>\n\n🔴 La OLT <b>{olt}</b> se registró en estado Offline."
+            enviar_telegram(msg)
+            cambios_detectados = True
+
+    # Guardar siempre el estado más reciente
+    guardar_estado_actual(estado_actual)
+    
+    if not cambios_detectados:
+        print("✅ Sin novedades: El estado de las OLTs no ha cambiado respecto al escaneo anterior.")
+
 
 if __name__ == "__main__":
     main()

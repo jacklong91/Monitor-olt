@@ -1,19 +1,4 @@
 {
-    "OLT3-N4BDR-ZONA3": "45 days, 20:32:47",
-    "OLT4-Z2-VENETUR": "5 days, 22:55:30",
-    "OLT6-ZONA1": "15 days, 21:14:30",
-    "OLT1-N5BDPZ-ZONA3": "----",
-    "OLT2-N5BDPZ-ZONA3": "0:06:17",
-    "OLT1-R3-ZONA1": "15 days, 21:14:29",
-    "OLT1-R1-CGNAT1-CRPN": "----",
-    "OLT2-R1-CGNAT1-CRPN": "----",
-    "OLT2-R3-ZONA1": "15 days, 16:32:44",
-    "OLT2-Z2-ATAMO": "232 days, 16:39:51",
-    "OLT1-R2-CGNAT1-CRPN": "----",
-    "OLT5-N4BDR-ZONA3": "16 days, 1:05:34",
-    "OLT2-R2-ZONA1-MGTA": "15 days, 21:14:29",
-    "OLT1-N9-R1-ZONA3-MGTA": "----",
-    "OLT4-N4BDR-ZONA3": "16 days, 1:05:31",
     "ultima_alerta_rutina": 1785157291.719021,
     "bot_reparado_confirmado": true
 }

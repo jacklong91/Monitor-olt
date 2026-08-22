@@ -1,19 +1,4 @@
 {
-    "OLT3-N4BDR-ZONA3": "Online",
-    "OLT4-Z2-VENETUR": "Online",
-    "OLT6-ZONA1": "Online",
-    "OLT1-N5BDPZ-ZONA3": "Online",
-    "OLT2-N5BDPZ-ZONA3": "Online",
-    "OLT1-R3-ZONA1": "Online",
-    "OLT1-R1-CGNAT1-CRPN": "Offline",
-    "OLT2-R1-CGNAT1-CRPN": "Offline",
-    "OLT2-R3-ZONA1": "Online",
-    "OLT2-Z2-ATAMO": "Online",
-    "OLT1-R2-CGNAT1-CRPN": "Offline",
-    "OLT5-N4BDR-ZONA3": "Online",
-    "OLT2-R2-ZONA1-MGTA": "Online",
-    "OLT1-N9-R1-ZONA3-MGTA": "Online",
-    "OLT4-N4BDR-ZONA3": "Online",
-    "ultima_alerta_rutina": 1787150836.3971574,
+    "ultima_alerta_rutina": 1787367757.6623719,
     "bot_reparado_confirmado": true
 }

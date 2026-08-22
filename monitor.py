@@ -4,46 +4,60 @@ import time
 import requests
 from playwright.sync_api import sync_playwright
 
+# =========================================================================
+# CONFIGURACIÓN DE OLTs CRÍTICAS (Deben estar SIEMPRE en Online)
+# =========================================================================
 OLTS_CRITICAS = [
-    "OLT3-N4BDR-ZONA3", "OLT4-Z2-VENETUR", "OLT6-ZONA1", "OLT1-N5BDPZ-ZONA3",
-    "OLT2-N5BDPZ-ZONA3", "OLT1-R3-ZONA1", "OLT2-R3-ZONA1", "OLT2-Z2-ATAMO",
-    "OLT5-N4BDR-ZONA3", "OLT2-R2-ZONA1-MGTA", "OLT1-N9-R1-ZONA3-MGTA", "OLT4-N4BDR-ZONA3"
+    "OLT3-N4BDR-ZONA3",
+    "OLT4-Z2-VENETUR",
+    "OLT6-ZONA1",
+    "OLT1-N5BDPZ-ZONA3",
+    "OLT2-N5BDPZ-ZONA3",
+    "OLT1-R3-ZONA1",
+    "OLT2-R3-ZONA1",
+    "OLT2-Z2-ATAMO",
+    "OLT5-N4BDR-ZONA3",
+    "OLT2-R2-ZONA1-MGTA",
+    "OLT1-N9-R1-ZONA3-MGTA",
+    "OLT4-N4BDR-ZONA3"
 ]
+
+# =========================================================================
+# CONFIGURACIÓN DE OLTs APAGADAS / SIN TRABAJAR (Siempre en Offline)
+# Solo alertarán si cambian a ONLINE.
+# =========================================================================
 OLTS_INACTIVAS_PERMANENTES = [
-    "OLT1-R1-CGNAT1-CRPN", "OLT2-R1-CGNAT1-CRPN", "OLT1-R2-CGNAT1-CRPN"
+    "OLT1-R1-CGNAT1-CRPN",
+    "OLT2-R1-CGNAT1-CRPN",
+    "OLT1-R2-CGNAT1-CRPN"
 ]
 
 def enviar_telegram(mensaje):
+    """Envía mensaje a Telegram con protección anti-caídas."""
     token = os.environ.get('TG_TOKEN')
     chat_id = os.environ.get('TG_CHAT_ID')
     if not token or not chat_id:
-        print("❌ Faltan TG_TOKEN o TG_CHAT_ID.")
-        return False
+        print("⚠️ Advertencia: Falta el token o chat id de Telegram.")
+        return
     url = f"https://api.telegram.org/bot{token}/sendMessage"
+    
     for cid in chat_id.split(','):
-        cid = cid.strip()
-        if not cid: continue
         try:
-            # Aquí añadimos parse_mode='HTML' para darle formato bonito a los mensajes
-            resp = requests.post(url, data={
-                'chat_id': cid, 
-                'text': mensaje, 
-                'parse_mode': 'HTML'
-            }, timeout=10)
-            if resp.status_code == 200:
-                print(f"✅ Enviado a {cid}")
-            else:
-                print(f"❌ Error HTTP {resp.status_code}: {resp.text}")
+            # Añadimos un timeout para que no se quede colgado esperando a Telegram
+            requests.post(url, data={'chat_id': cid.strip(), 'text': mensaje}, timeout=15)
         except Exception as e:
-            print(f"❌ Excepción: {e}")
+            print(f"❌ Error de red al intentar enviar mensaje a Telegram: {e}")
 
 def cargar_estado_anterior(archivo_estado):
     if not os.path.exists(archivo_estado):
+        print("ℹ️ No existe estado_olts.json. Se creará uno nuevo.")
         return {}
     try:
         with open(archivo_estado, "r", encoding="utf-8") as f:
             contenido = f.read().strip()
-            return json.loads(contenido) if contenido else {}
+            if not contenido:
+                return {}
+            return json.loads(contenido)
     except Exception:
         return {}
 
@@ -63,11 +77,13 @@ def main():
 
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True)
-        context = browser.new_context(user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+        context = browser.new_context(user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36")
         page = context.new_page()
 
         try:
-            print("🔐 Navegando a la página de login...")
+            if not url_admin:
+                raise ValueError("La variable URL_ADMIN está vacía.")
+                
             page.goto(url_admin, timeout=60000)
             
             caja_usuario = page.locator("input[placeholder*='Usuario'], input[name='username'], input[type='text']").first
@@ -79,31 +95,21 @@ def main():
             
             page.keyboard.press("Enter")
             page.wait_for_timeout(5000) 
-
-            print("📋 Navegando a la lista de OLTs...")
+            
+            print("Navegando a la lista de OLTs...")
             page.goto("https://wave.adminolt.com/olt/list/", timeout=60000)
             
-            print("⏳ Esperando a que la tabla cargue los datos reales...")
             try:
-                page.wait_for_selector("text=Cargando...", state="detached", timeout=60000)
-                print("✅ El mensaje de 'Cargando...' ha desaparecido.")
+                page.wait_for_selector("table tbody tr", timeout=30000)
             except Exception:
-                pass
-            
-            try:
-                print("⏳ Esperando a que desaparezcan los spinners de la columna Estado...")
-                page.wait_for_selector("table tbody tr td:nth-child(5) .spinner-border", state="detached", timeout=60000)
-                print("✅ Spinners de estado desaparecidos. Texto listo para leer.")
-            except Exception:
-                print("ℹ️ No se encontraron spinners de estado o ya habían cargado.")
-            
-            page.wait_for_selector("table tbody tr", timeout=45000)
+                print("⚠️ Advertencia: La tabla tardó más de lo esperado en aparecer.")
+
             filas = page.query_selector_all("table tbody tr")
             print(f"🔍 Filas encontradas en la tabla: {len(filas)}")
             
             if len(filas) == 0:
-                raise Exception("No se encontraron filas en la tabla.")
-            
+                print("⚠️ Advertencia: No se detectaron OLTs en esta lectura.")
+
             estado_actual = {}
             caidas = []
             recuperadas = []
@@ -111,16 +117,15 @@ def main():
             for fila in filas:
                 columnas = fila.query_selector_all("td")
                 if len(columnas) >= 7:
-                    nombre = columnas[2].text_content().strip()
-                    estado_raw = columnas[4].text_content().strip()
-                    estado = estado_raw.strip().lower()
+                    nombre = columnas[2].inner_text().strip()
+                    estado_raw = columnas[6].inner_text().strip()
+                    estado = estado_raw.lower()
                     
                     if not nombre:
                         continue
                         
-                    print(f"🧪 OLT: {nombre} | Estado leído: '{estado_raw}' -> Procesado: '{estado}'")
-                    
                     estado_actual[nombre] = estado_raw
+                    
                     estado_previo = estado_anterior.get(nombre)
                     if isinstance(estado_previo, str):
                         estado_previo = estado_previo.lower()
@@ -138,48 +143,25 @@ def main():
                     if estado_previo == 'online' and estado == 'offline':
                         if nombre not in caidas:
                             caidas.append(nombre)
+                    
                     elif estado_previo == 'offline' and estado == 'online':
                         recuperadas.append(nombre)
-
-            if not estado_actual:
-                enviar_telegram("⚠️ <b>ERROR CRÍTICO</b>: El bot no logró leer ninguna OLT.")
-                return
             
             estado_actual['ultima_alerta_rutina'] = ultima_alerta_rutina
             estado_actual['bot_reparado_confirmado'] = bot_reparado_confirmado
             
-            # =============================================
-            # MENSAJES CON ESTILO HTML (ROJOS Y VERDES)
-            # =============================================
             if caidas:
-                lista_caidas = "\n".join([f"🔴 <b>{olt}</b>" for olt in caidas])
-                enviar_telegram(
-                    f"🚨 <b>⚠️ ALERTA CRÍTICA</b> 🚨\n\n"
-                    f"🔻 <b>OLTs Caídas:</b>\n{lista_caidas}"
-                )
+                enviar_telegram(f"⚠️ ¡ALERTA CRÍTICA!\nOLTs Caídas:\n" + "\n".join(caidas))
             if recuperadas:
-                lista_recuperadas = "\n".join([f"🟢 <b>{olt}</b>" for olt in recuperadas])
-                enviar_telegram(
-                    f"✅ <b>¡RECUPERACIÓN!</b> ✅\n\n"
-                    f"🟢 <b>OLTs en Línea:</b>\n{lista_recuperadas}"
-                )
+                enviar_telegram(f"✅ ¡RECUPERACIÓN!\nOLTs en Línea:\n" + "\n".join(recuperadas))
             
-            # Mensaje de confirmación de arranque
             if not bot_reparado_confirmado:
-                enviar_telegram(
-                    f"🤖 <b>AVISO DE FUNCIONAMIENTO</b> 🤖\n\n"
-                    f"✅ El bot está monitoreando y protegiendo las OLTs correctamente."
-                )
+                enviar_telegram("✅ AVISO DE FUNCIONAMIENTO: El bot está monitoreando y protegiendo las OLTs correctamente.")
                 estado_actual['bot_reparado_confirmado'] = True
                 
-            # Reporte de rutina (Cada 3 horas - 10800 segundos)
             if not caidas and not recuperadas:
                 if tiempo_actual - ultima_alerta_rutina >= 10800:
-                    enviar_telegram(
-                        f"🤖 <b>Reporte de Rutina</b> 🤖\n\n"
-                        f"📊 Sistema activo vigilando.\n"
-                        f"🟢 Sin novedad en las OLTs."
-                    )
+                    enviar_telegram("✅ Reporte de rutina: Sistema activo vigilando. Sin novedad en las OLTs.")
                     estado_actual['ultima_alerta_rutina'] = tiempo_actual
             
             with open(archivo_estado, 'w', encoding="utf-8") as f:
@@ -188,9 +170,8 @@ def main():
             print("✅ Escaneo completado exitosamente.")
 
         except Exception as e:
-            error_msg = f"⚠️ Error en el bot: {e}"
-            print(f"❌ {error_msg}")
-            enviar_telegram(f"⚠️ <b>Error en el bot</b>\n\n<code>{e}</code>")
+            print(f"❌ Error general en la automatización: {e}")
+            enviar_telegram(f"⚠️ Error temporal en el escaneo de OLTs: {e}")
         finally:
             browser.close()
 

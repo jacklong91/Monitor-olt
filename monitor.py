@@ -33,20 +33,15 @@ OLTS_INACTIVAS_PERMANENTES = [
 ]
 
 def enviar_telegram(mensaje):
-    """Envía mensaje a Telegram con protección anti-caídas."""
     token = os.environ.get('TG_TOKEN')
     chat_id = os.environ.get('TG_CHAT_ID')
     if not token or not chat_id:
-        print("⚠️ Advertencia: Falta el token o chat id de Telegram.")
+        print("Falta el token o chat id de Telegram.")
         return
     url = f"https://api.telegram.org/bot{token}/sendMessage"
     
     for cid in chat_id.split(','):
-        try:
-            # Añadimos un timeout para que no se quede colgado esperando a Telegram
-            requests.post(url, data={'chat_id': cid.strip(), 'text': mensaje}, timeout=15)
-        except Exception as e:
-            print(f"❌ Error de red al intentar enviar mensaje a Telegram: {e}")
+        requests.post(url, data={'chat_id': cid.strip(), 'text': mensaje})
 
 def cargar_estado_anterior(archivo_estado):
     if not os.path.exists(archivo_estado):
@@ -99,6 +94,7 @@ def main():
             print("Navegando a la lista de OLTs...")
             page.goto("https://wave.adminolt.com/olt/list/", timeout=60000)
             
+            # Espera explícita robusta para asegurar que la tabla cargue por completo
             try:
                 page.wait_for_selector("table tbody tr", timeout=30000)
             except Exception:
@@ -108,7 +104,7 @@ def main():
             print(f"🔍 Filas encontradas en la tabla: {len(filas)}")
             
             if len(filas) == 0:
-                print("⚠️ Advertencia: No se detectaron OLTs en esta lectura.")
+                enviar_telegram("⚠️ Advertencia: El bot escaneó AdminOLT pero no encontró filas en la tabla. Posible retraso de carga o cambio en la web.")
 
             estado_actual = {}
             caidas = []
@@ -130,20 +126,24 @@ def main():
                     if isinstance(estado_previo, str):
                         estado_previo = estado_previo.lower()
                     
+                    # 1. CASO OLTs Inactivas Permanentes (Solo reportan si pasan de offline a online)
                     if nombre in OLTS_INACTIVAS_PERMANENTES:
                         if estado_previo == 'offline' and estado == 'online':
                             recuperadas.append(nombre)
                         continue 
                     
+                    # 2. CASO OLTs Críticas: Si están en la lista y se encuentran en offline, alertar de inmediato
                     if nombre in OLTS_CRITICAS and estado == 'offline':
                         if nombre not in caidas:
                             caidas.append(nombre)
                         continue
 
+                    # 3. Transición normal de online a offline para las demás
                     if estado_previo == 'online' and estado == 'offline':
                         if nombre not in caidas:
                             caidas.append(nombre)
                     
+                    # 4. Transición normal de offline a online para las demás
                     elif estado_previo == 'offline' and estado == 'online':
                         recuperadas.append(nombre)
             
@@ -167,10 +167,10 @@ def main():
             with open(archivo_estado, 'w', encoding="utf-8") as f:
                 json.dump(estado_actual, f, indent=4)
                 
-            print("✅ Escaneo completado exitosamente.")
+            print("Escaneo completado exitosamente.")
 
         except Exception as e:
-            print(f"❌ Error general en la automatización: {e}")
+            print(f"❌ Error en el navegador: {e}")
             enviar_telegram(f"⚠️ Error temporal en el escaneo de OLTs: {e}")
         finally:
             browser.close()

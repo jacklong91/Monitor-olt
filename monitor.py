@@ -110,20 +110,23 @@ def main():
             estado_actual = {}
             caidas = []
             recuperadas = []
+            info_temperaturas = [] # Lista para guardar los nombres y temperaturas
             
             for fila in filas:
                 columnas = fila.query_selector_all("td")
                 if len(columnas) >= 7:
                     nombre = columnas[2].inner_text().strip()
-                    # ¡AQUÍ ESTABA EL ERROR! Cambiado de columnas[6] a columnas[4]
                     estado_raw = columnas[4].inner_text().strip()
+                    temperatura_raw = columnas[5].inner_text().strip() # Extraemos la temperatura
                     estado = estado_raw.lower()
                     
                     if not nombre:
                         continue
                         
-                    # Esto imprimirá en la consola negra de GitHub qué está leyendo el bot
-                    print(f"📡 Leyendo: {nombre} | Estado detectado: {estado_raw}")
+                    print(f"📡 Leyendo: {nombre} | Estado: {estado_raw} | Temp: {temperatura_raw}")
+                    
+                    # Guardamos el dato para el reporte de rutina
+                    info_temperaturas.append(f"🔹 {nombre}: {temperatura_raw}")
                         
                     estado_actual[nombre] = estado_raw
                     
@@ -151,18 +154,29 @@ def main():
             estado_actual['ultima_alerta_rutina'] = ultima_alerta_rutina
             estado_actual['bot_reparado_confirmado'] = bot_reparado_confirmado
             
+            # --- ENVÍO DE MENSAJES A TELEGRAM ---
+            
             if caidas:
-                enviar_telegram(f"⚠️ ¡ALERTA CRÍTICA!\nOLTs Caídas:\n" + "\n".join(caidas))
+                mensaje_caida = "🚨🔴 ¡ALERTA CRÍTICA DE CAÍDA! 🔴🚨\n❌ OLT(s) OFFLINE:\n\n"
+                for c in caidas:
+                    mensaje_caida += f"🔻 {c}\n"
+                enviar_telegram(mensaje_caida)
+                
             if recuperadas:
-                enviar_telegram(f"✅ ¡RECUPERACIÓN!\nOLTs en Línea:\n" + "\n".join(recuperadas))
+                mensaje_recuperacion = "✅🟢 ¡RECUPERACIÓN EXITOSA! 🟢✅\n📡 OLT(s) EN LÍNEA:\n\n"
+                for r in recuperadas:
+                    mensaje_recuperacion += f"🔼 {r}\n"
+                enviar_telegram(mensaje_recuperacion)
             
             if not bot_reparado_confirmado:
-                enviar_telegram("✅ AVISO DE FUNCIONAMIENTO: El bot está monitoreando y protegiendo las OLTs correctamente.")
+                enviar_telegram("✅ AVISO: El bot está monitoreando y protegiendo las OLTs correctamente.")
                 estado_actual['bot_reparado_confirmado'] = True
                 
             if not caidas and not recuperadas:
-                if tiempo_actual - ultima_alerta_rutina >= 10800:
-                    enviar_telegram("✅ Reporte de rutina: Sistema activo vigilando. Sin novedad en las OLTs.")
+                if tiempo_actual - ultima_alerta_rutina >= 10800: # 10800 segundos = 3 horas
+                    mensaje_rutina = "✅ 📊 REPORTE DE RUTINA (3 HORAS)\nSistema activo vigilando. Sin novedad en las OLTs.\n\n🌡️ TEMPERATURAS ACTUALES:\n"
+                    mensaje_rutina += "\n".join(info_temperaturas)
+                    enviar_telegram(mensaje_rutina)
                     estado_actual['ultima_alerta_rutina'] = tiempo_actual
             
             with open(archivo_estado, 'w', encoding="utf-8") as f:

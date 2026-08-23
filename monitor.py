@@ -33,7 +33,6 @@ OLTS_INACTIVAS_PERMANENTES = [
 ]
 
 def enviar_telegram(mensaje):
-    """Envía mensaje a Telegram con protección anti-caídas."""
     token = os.environ.get('TG_TOKEN')
     chat_id = os.environ.get('TG_CHAT_ID')
     if not token or not chat_id:
@@ -43,7 +42,6 @@ def enviar_telegram(mensaje):
     
     for cid in chat_id.split(','):
         try:
-            # Añadimos un timeout para que no se quede colgado esperando a Telegram
             requests.post(url, data={'chat_id': cid.strip(), 'text': mensaje}, timeout=15)
         except Exception as e:
             print(f"❌ Error de red al intentar enviar mensaje a Telegram: {e}")
@@ -94,21 +92,22 @@ def main():
             caja_password.fill(pass_admin)
             
             page.keyboard.press("Enter")
+            
+            # Espera para el login
             page.wait_for_timeout(5000) 
             
             print("Navegando a la lista de OLTs...")
             page.goto("https://wave.adminolt.com/olt/list/", timeout=60000)
             
-            try:
-                page.wait_for_selector("table tbody tr", timeout=30000)
-            except Exception:
-                print("⚠️ Advertencia: La tabla tardó más de lo esperado en aparecer.")
+            # PAUSA OBLIGATORIA AÑADIDA: Esperamos 10 segundos para que AdminOLT cargue todos los datos reales
+            print("⏳ Esperando 10 segundos para que la tabla cargue completamente...")
+            page.wait_for_timeout(10000)
 
             filas = page.query_selector_all("table tbody tr")
             print(f"🔍 Filas encontradas en la tabla: {len(filas)}")
             
-            if len(filas) == 0:
-                print("⚠️ Advertencia: No se detectaron OLTs en esta lectura.")
+            if len(filas) <= 1:
+                print("⚠️ Advertencia: Solo se detectó 0 o 1 fila. Es posible que los datos aún no hayan cargado.")
 
             estado_actual = {}
             caidas = []

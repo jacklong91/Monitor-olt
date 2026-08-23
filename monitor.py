@@ -93,13 +93,11 @@ def main():
             
             page.keyboard.press("Enter")
             
-            # Espera para el login
             page.wait_for_timeout(5000) 
             
             print("Navegando a la lista de OLTs...")
             page.goto("https://wave.adminolt.com/olt/list/", timeout=60000)
             
-            # PAUSA OBLIGATORIA AÑADIDA: Esperamos 10 segundos para que AdminOLT cargue todos los datos reales
             print("⏳ Esperando 10 segundos para que la tabla cargue completamente...")
             page.wait_for_timeout(10000)
 
@@ -117,11 +115,15 @@ def main():
                 columnas = fila.query_selector_all("td")
                 if len(columnas) >= 7:
                     nombre = columnas[2].inner_text().strip()
-                    estado_raw = columnas[6].inner_text().strip()
+                    # ¡AQUÍ ESTABA EL ERROR! Cambiado de columnas[6] a columnas[4]
+                    estado_raw = columnas[4].inner_text().strip()
                     estado = estado_raw.lower()
                     
                     if not nombre:
                         continue
+                        
+                    # Esto imprimirá en la consola negra de GitHub qué está leyendo el bot
+                    print(f"📡 Leyendo: {nombre} | Estado detectado: {estado_raw}")
                         
                     estado_actual[nombre] = estado_raw
                     

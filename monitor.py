@@ -2,10 +2,11 @@ import os
 import json
 import time
 import requests
+from datetime import datetime
 from playwright.sync_api import sync_playwright
 
 # =========================================================================
-# CONFIGURACIÓN DE OLTs CRÍTICAS (Deben estar SIEMPRE en Online)
+# CONFIGURACION DE OLTs CRITICAS (Deben estar SIEMPRE en Online)
 # =========================================================================
 OLTS_CRITICAS = [
     "OLT3-N4BDR-ZONA3",
@@ -23,8 +24,8 @@ OLTS_CRITICAS = [
 ]
 
 # =========================================================================
-# CONFIGURACIÓN DE OLTs APAGADAS / SIN TRABAJAR (Siempre en Offline)
-# Solo alertarán si cambian a ONLINE.
+# CONFIGURACION DE OLTs APAGADAS / SIN TRABAJAR (Siempre en Offline)
+# Solo alertaran si cambian a ONLINE.
 # =========================================================================
 OLTS_INACTIVAS_PERMANENTES = [
     "OLT1-R1-CGNAT1-CRPN",
@@ -48,7 +49,7 @@ def enviar_telegram(mensaje):
 
 def cargar_estado_anterior(archivo_estado):
     if not os.path.exists(archivo_estado):
-        print("ℹ️ No existe estado_olts.json. Se creará uno nuevo.")
+        print("ℹ️ No existe estado_olts.json. Se creara uno nuevo.")
         return {}
     try:
         with open(archivo_estado, "r", encoding="utf-8") as f:
@@ -80,7 +81,7 @@ def main():
 
         try:
             if not url_admin:
-                raise ValueError("La variable URL_ADMIN está vacía.")
+                raise ValueError("La variable URL_ADMIN esta vacia.")
                 
             page.goto(url_admin, timeout=60000)
             
@@ -88,7 +89,7 @@ def main():
             caja_usuario.wait_for(state="visible", timeout=60000)
             caja_usuario.fill(user_admin)
             
-            caja_password = page.locator("input[placeholder*='Contraseña'], input[name='password'], input[type='password']").first
+            caja_password = page.locator("input[placeholder*='Contrasena'], input[name='password'], input[type='password']").first
             caja_password.fill(pass_admin)
             
             page.keyboard.press("Enter")
@@ -105,12 +106,17 @@ def main():
             print(f"🔍 Filas encontradas en la tabla: {len(filas)}")
             
             if len(filas) <= 1:
-                print("⚠️ Advertencia: Solo se detectó 0 o 1 fila. Es posible que los datos aún no hayan cargado.")
+                print("⚠️ Advertencia: Solo se detecto 0 o 1 fila. Es posible que los datos aun no hayan cargado.")
 
             estado_actual = {}
             caidas = []
             recuperadas = []
             info_temperaturas = [] # Lista para guardar los nombres y temperaturas
+            
+            # Preservar timestamps de caida de ejecuciones anteriores
+            for key, value in estado_anterior.items():
+                if key.startswith("_caida_") or key.startswith("_recuperacion_"):
+                    estado_actual[key] = value
             
             for fila in filas:
                 columnas = fila.query_selector_all("td")
@@ -139,37 +145,71 @@ def main():
                             recuperadas.append(nombre)
                         continue 
                     
-                    if nombre in OLTS_CRITICAS and estado == 'offline':
-                        if nombre not in caidas:
-                            caidas.append(nombre)
-                        continue
-
+                    # Guardar hora de caida cuando pasa a offline
                     if estado_previo == 'online' and estado == 'offline':
                         if nombre not in caidas:
                             caidas.append(nombre)
+                            # Guardar timestamp de caida en estado_actual
+                            estado_actual[f"_caida_{nombre}"] = tiempo_actual
                     
+                    # Calcular tiempo caido cuando se recupera
                     elif estado_previo == 'offline' and estado == 'online':
                         recuperadas.append(nombre)
+                        # Guardar timestamp de recuperacion para calcular duracion
+                        estado_actual[f"_recuperacion_{nombre}"] = tiempo_actual
+                    
+                    # Para OLTs criticas que ya estan offline (sin estado previo o primer escaneo)
+                    if nombre in OLTS_CRITICAS and estado == 'offline':
+                        if nombre not in caidas:
+                            caidas.append(nombre)
+                            # Si no tiene hora de caida guardada, registrar ahora
+                            if f"_caida_{nombre}" not in estado_anterior:
+                                estado_actual[f"_caida_{nombre}"] = tiempo_actual
             
             estado_actual['ultima_alerta_rutina'] = ultima_alerta_rutina
             estado_actual['bot_reparado_confirmado'] = bot_reparado_confirmado
             
-            # --- ENVÍO DE MENSAJES A TELEGRAM ---
+            # --- ENVIO DE MENSAJES A TELEGRAM ---
             
             if caidas:
-                mensaje_caida = "🚨🔴 ¡ALERTA CRÍTICA DE CAÍDA! 🔴🚨\n❌ OLT(s) OFFLINE:\n\n"
+                hora_caida = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
+                mensaje_caida = f"🚨🔴 ¡ALERTA CRITICA DE CAIDA! 🔴🚨\n🕐 Hora de caida: {hora_caida}\n\n❌ OLT(s) OFFLINE:\n\n"
                 for c in caidas:
                     mensaje_caida += f"🔻 {c}\n"
                 enviar_telegram(mensaje_caida)
                 
             if recuperadas:
-                mensaje_recuperacion = "✅🟢 ¡RECUPERACIÓN EXITOSA! 🟢✅\n📡 OLT(s) EN LÍNEA:\n\n"
+                hora_recuperacion = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
+                mensaje_recuperacion = f"✅🟢 ¡RECUPERACION EXITOSA! 🟢✅\n🕐 Hora de recuperacion: {hora_recuperacion}\n\n📡 OLT(s) EN LINEA:\n\n"
                 for r in recuperadas:
-                    mensaje_recuperacion += f"🔼 {r}\n"
+                    # Calcular tiempo caido
+                    caida_ts = estado_anterior.get(f"_caida_{r}")
+                    if caida_ts:
+                        duracion_segundos = tiempo_actual - caida_ts
+                        horas = int(duracion_segundos // 3600)
+                        minutos = int((duracion_segundos % 3600) // 60)
+                        segundos = int(duracion_segundos % 60)
+                        
+                        if horas > 0:
+                            duracion_str = f"{horas}h {minutos}m {segundos}s"
+                        elif minutos > 0:
+                            duracion_str = f"{minutos}m {segundos}s"
+                        else:
+                            duracion_str = f"{segundos}s"
+                        
+                        mensaje_recuperacion += f"🔼 {r}\n   ⏱️ Tiempo caida: {duracion_str}\n"
+                        
+                        # Limpiar el registro de caida ya que se recupero
+                        if f"_caida_{r}" in estado_actual:
+                            del estado_actual[f"_caida_{r}"]
+                        if f"_recuperacion_{r}" in estado_actual:
+                            del estado_actual[f"_recuperacion_{r}"]
+                    else:
+                        mensaje_recuperacion += f"🔼 {r}\n   ⏱️ Tiempo caida: desconocido\n"
                 enviar_telegram(mensaje_recuperacion)
             
             if not bot_reparado_confirmado:
-                enviar_telegram("✅ AVISO: El bot está monitoreando y protegiendo las OLTs correctamente.")
+                enviar_telegram("✅ AVISO: El bot esta monitoreando y protegiendo las OLTs correctamente.")
                 estado_actual['bot_reparado_confirmado'] = True
                 
             if not caidas and not recuperadas:
@@ -185,7 +225,7 @@ def main():
             print("✅ Escaneo completado exitosamente.")
 
         except Exception as e:
-            print(f"❌ Error general en la automatización: {e}")
+            print(f"❌ Error general en la automatizacion: {e}")
             enviar_telegram(f"⚠️ Error temporal en el escaneo de OLTs: {e}")
         finally:
             browser.close()

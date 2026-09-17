@@ -1,5 +1,5 @@
 {
-    "_caida_OLT2-Z2-ATAMO": 1788027977.865639,
+    "_caida_OLT2-Z2-ATAMO": 1789655331.4472013,
     "_caida_OLT1-N5BDPZ-ZONA3": 1789366074.6655812,
     "_caida_OLT2-N5BDPZ-ZONA3": 1789366074.6655812,
     "OLT3-N4BDR-ZONA3": "Online",
@@ -11,7 +11,7 @@
     "OLT1-R1-CGNAT1-CRPN": "Offline",
     "OLT2-R1-CGNAT1-CRPN": "Offline",
     "OLT2-R3-ZONA1": "Online",
-    "OLT2-Z2-ATAMO": "Online",
+    "OLT2-Z2-ATAMO": "Offline",
     "OLT1-R2-CGNAT1-CRPN": "Offline",
     "OLT5-N4BDR-ZONA3": "Online",
     "OLT2-R2-ZONA1-MGTA": "Online",

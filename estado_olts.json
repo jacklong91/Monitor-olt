@@ -13,7 +13,8 @@
     "OLT1-R2-CGNAT1-CRPN": "Offline",
     "OLT5-N4BDR-ZONA3": "Online",
     "OLT2-R2-ZONA1-MGTA": "Online",
-    "OLT1-N9-R1-ZONA3-MGTA": "Online",
+    "OLT1-N9-R1-ZONA3-MGTA": "Offline",
+    "_caida_OLT1-N9-R1-ZONA3-MGTA": 1790078011.880335,
     "OLT4-N4BDR-ZONA3": "Online",
     "ultima_alerta_rutina": 1789974340.9693196,
     "bot_reparado_confirmado": true

@@ -5,6 +5,17 @@ name: Desplegar bot en el servidor
 on:
   push:
     branches: [main]
+    # Solo cuando cambia codigo del bot. El cron de Actions commitea
+    # estado_olts.json cada 15 minutos; sin este filtro el despliegue
+    # se dispararia y fallaria en cada uno de esos commits.
+    paths:
+      - 'monitorolt.py'
+      - 'requirements.txt'
+      - 'setup_server.sh'
+      - 'update.sh'
+      - '.env.example'
+      - 'deploy/**'
+      - '.github/workflows/deploy.yml'
   workflow_dispatch:
 
 concurrency:

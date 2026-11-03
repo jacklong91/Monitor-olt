@@ -1,0 +1,31 @@
+[Unit]
+Description=Monitor OLT WAVE (alertas por Telegram)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=monitor
+WorkingDirectory=/opt/monitorolt
+Environment=PYTHONUNBUFFERED=1
+Environment=PYTHONIOENCODING=utf-8
+Environment=PLAYWRIGHT_BROWSERS_PATH=/opt/monitorolt/.pw-browsers
+ExecStart=/opt/monitorolt/.venv/bin/python /opt/monitorolt/monitorolt.py
+
+# El bot se reanuda solo si muere. SIGTERM = paro planificado (no avisa al canal).
+Restart=always
+RestartSec=15
+TimeoutStopSec=30
+SendSIGKILL=no
+
+# Un Chromium perdido no debe tumbar la maquina.
+MemoryMax=2G
+TasksMax=512
+
+# Endurecimiento basico.
+NoNewPrivileges=true
+ProtectHome=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

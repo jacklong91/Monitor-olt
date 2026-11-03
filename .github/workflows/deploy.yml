@@ -1,0 +1,26 @@
+name: Desplegar bot en el servidor
+
+# GitHub no ejecuta el bot: solo empuja la version nueva al servidor
+# cuando haces git push a main. El que corre 24/7 es el servidor.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: desplegar-monitorolt
+  cancel-in-progress: false
+
+jobs:
+  desplegar:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Actualizar codigo y reiniciar servicio por SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          script_stop: true
+          script: |
+            sudo bash /opt/monitorolt/update.sh

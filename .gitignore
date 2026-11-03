@@ -1,0 +1,24 @@
+# Credenciales y configuracion local: NUNCA subir a GitHub
+.env
+.env.*
+!.env.example
+
+# Estado del bot (especifico de cada servidor)
+estado_olts.json
+*.json.tmp
+
+# Logs
+*.log
+error_servicio.log
+
+# Binarios locales / utilitarios de Windows
+nssm.exe
+*.exe
+ejecutar_bot.bat
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pw-browsers/
